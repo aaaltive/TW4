@@ -1470,7 +1470,7 @@ function errText(e){
   if(c==='bad_json')return 'Claude’s answer was not in the expected format.';
   if(c==='no_hidden')return 'Set up Claude’s hidden cards first (Claude tab).';
   if(c==='unavailable')return 'Claude cannot be asked yet. Open this page inside Claude, or add an API key in Setup.';
-  if(c==='bad_key')return 'The API key was rejected. Check it in Setup.';
+  if(c==='bad_key')return 'The API key was rejected. Check it in Setup (the table passcode, if this page is hosted on the table server).';
   if(c==='bad_model')return 'That model name was not found. Check the model names in Setup.';
   if(c==='network')return 'Could not reach the Anthropic API. Check your connection.';
   if(c&&String(c).indexOf('http_')===0)return 'The API returned an error ('+String(c).slice(5)+').';
@@ -2892,45 +2892,48 @@ document.addEventListener('input',function(e){
 });
 /* ---------- asking Claude outside the Claude app: your own API key ---------- */
 var AKEY='ti4-apikey-v1';
-var API={key:'',m1:'claude-sonnet-5-5',m2:'claude-haiku-5-5'};
-try{var _ak=JSON.parse(localStorage.getItem(AKEY)||'null');if(_ak)for(var _k in API)if(typeof _ak[_k]==='string'&&_ak[_k])API[_k]=_ak[_k];}catch(e){}
-function apiSave(){try{localStorage.setItem(AKEY,JSON.stringify(API));}catch(e){}}
+var API={key:'',pass:'',proxy:false,m1:'claude-sonnet-5-5',m2:'claude-haiku-5-5'};
+try{var _ak=JSON.parse(localStorage.getItem(AKEY)||'null');if(_ak)for(var _k in {key:1,pass:1,m1:1,m2:1})if(typeof _ak[_k]==='string'&&_ak[_k])API[_k]=_ak[_k];}catch(e){}
+function apiSave(){try{localStorage.setItem(AKEY,JSON.stringify({key:API.key,pass:API.pass,m1:API.m1,m2:API.m2}));}catch(e){}}
 async function apiAsk(prompt,opts){
   var model=opts&&opts.modelTier==='quick'?API.m2:API.m1,res;
   try{
-    res=await fetch('https://api.anthropic.com/v1/messages',{method:'POST',signal:opts&&opts.signal,
-      headers:{'content-type':'application/json','x-api-key':API.key,'anthropic-version':'2023-06-01','anthropic-dangerous-direct-browser-access':'true'},
+    res=await fetch(API.proxy?'api/claude':'https://api.anthropic.com/v1/messages',{method:'POST',signal:opts&&opts.signal,
+      headers:API.proxy?{'content-type':'application/json','x-table-pass':API.pass}:{'content-type':'application/json','x-api-key':API.key,'anthropic-version':'2023-06-01','anthropic-dangerous-direct-browser-access':'true'},
       body:JSON.stringify({model:model,max_tokens:2500,messages:[{role:'user',content:prompt}]})});
   }catch(e){if(e&&e.name==='AbortError')throw {code:'cancelled'};throw {code:'network'};}
   if(!res.ok){throw {code:(res.status===401||res.status===403)?'bad_key':res.status===429?'rate_limited':res.status===404?'bad_model':'http_'+res.status};}
   var j=await res.json();
   return {text:(j.content||[]).filter(function(b){return b.type==='text';}).map(function(b){return b.text;}).join('')};
 }
-function refreshAsker(){ui.sample=ui.builtin||(API.key?apiAsk:null);}
+function apiReady(){return API.proxy?!!API.pass:!!API.key;}
+function refreshAsker(){ui.sample=ui.builtin||(apiReady()?apiAsk:null);}
 function apiStatus(){
   if(ui.builtin)return 'Claude can already be asked from inside the Claude app. A key is only used when you open this page somewhere else.';
+  if(API.proxy)return API.pass?'Table passcode saved on this device. Claude is asked through the table server; the API key never leaves it.':'Enter the table passcode to turn on the Ask Claude buttons.';
   return API.key?'API key saved on this device (ends in '+API.key.slice(-4)+'). Claude can be asked from this page.':'No key yet. Without one, the Ask Claude buttons stay off.';
 }
 function renderApi(){
   return '<div class="sec"><h2>Ask Claude outside the Claude app</h2><div class="card"><p class="mut small" style="margin-top:0">'+esc(apiStatus())+'</p>'+
-    '<label class="fld"><span>Anthropic API key</span><input id="api-key" type="password" autocomplete="off" placeholder="'+(API.key?'Saved. Type a new key to replace it':'sk-ant-…')+'"></label>'+
+    (API.proxy?'<label class="fld"><span>Table passcode</span><input id="api-pass" type="password" autocomplete="off" placeholder="'+(API.pass?'Saved. Type a new passcode to replace it':'Passcode')+'"></label>':'<label class="fld"><span>Anthropic API key</span><input id="api-key" type="password" autocomplete="off" placeholder="'+(API.key?'Saved. Type a new key to replace it':'sk-ant-…')+'"></label>')+
     '<div class="row" style="margin-top:8px"><label class="fld grow"><span>Model for turns and decisions</span><input id="api-m1" type="text" autocomplete="off" value="'+esc(API.m1)+'"></label><label class="fld grow"><span>Model for quick combat calls</span><input id="api-m2" type="text" autocomplete="off" value="'+esc(API.m2)+'"></label></div>'+
-    '<div class="row" style="margin-top:10px"><button class="btn pri" data-act="apiSave">Save</button><button class="btn" data-act="apiTest"'+(API.key?'':' disabled')+'>Test</button><button class="btn danger" data-act="apiClear"'+(API.key?'':' disabled')+'>Remove key</button></div>'+
-    '<p class="mut small" style="margin-bottom:0">The key stays on this device and is never part of a saved game. Calls are billed to your API account. This only works when the page is opened outside Claude, because pages inside Claude cannot reach the API directly.</p></div></div>';
+    '<div class="row" style="margin-top:10px"><button class="btn pri" data-act="apiSave">Save</button><button class="btn" data-act="apiTest"'+(apiReady()?'':' disabled')+'>Test</button><button class="btn danger" data-act="apiClear"'+(apiReady()?'':' disabled')+'>'+(API.proxy?'Remove passcode':'Remove key')+'</button></div>'+
+    '<p class="mut small" style="margin-bottom:0">The key or passcode stays on this device and is never part of a saved game. Calls are billed to your API account. This only works when the page is opened outside Claude, because pages inside Claude cannot reach the API directly.</p></div></div>';
 }
 function apiAct(a){
   if(a==='apiSave'){
     var k=($('#api-key')||{}).value||'',m1=(($('#api-m1')||{}).value||'').trim(),m2=(($('#api-m2')||{}).value||'').trim();
-    if(k.trim())API.key=k.trim();if(m1)API.m1=m1;if(m2)API.m2=m2;
+    var pw=(($('#api-pass')||{}).value||'');if(k.trim())API.key=k.trim();if(pw.trim())API.pass=pw.trim();if(m1)API.m1=m1;if(m2)API.m2=m2;
     apiSave();refreshAsker();toast('Saved.');return;
   }
-  if(a==='apiClear'){API.key='';apiSave();refreshAsker();toast('Key removed.');return;}
+  if(a==='apiClear'){API.key='';API.pass='';apiSave();refreshAsker();toast('Key removed.');return;}
   if(a==='apiTest'){
     toast('Testing…');render();
     apiAsk('Reply with the single word OK.',{modelTier:'quick'}).then(function(r){toast(/ok/i.test(r.text)?'Connected.':'Connected, but the reply was unexpected.');render();},function(e){toast(errText(e));render();});
   }
 }
 
+try{fetch('api/health').then(function(r){return r.ok?r.json():null;}).then(function(j){if(j&&j.proxy){API.proxy=true;refreshAsker();render();}}).catch(function(){});}catch(e){}
 if(window.claude&&window.claude.use){
   window.claude.use('sample').then(function(sm){ui.builtin=sm||null;refreshAsker();ui.sampleChecked=true;render();}).catch(function(){refreshAsker();ui.sampleChecked=true;render();});
 }else{ui.sampleChecked=true;refreshAsker();}
