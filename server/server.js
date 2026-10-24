@@ -87,7 +87,13 @@ async function openrouter(res, model, messages, max_tokens) {
       body: JSON.stringify({ model, max_tokens, messages: [{ role: 'system', content: 'Reply with ONLY the JSON object the user asks for. Do not write your reasoning, analysis or any other text before or after it.' }].concat(messages) })
     });
     const j = await r.json().catch(() => null);
-    if (!r.ok || !j) return send(res, r.ok ? 502 : r.status, { error: 'upstream' });
+    if (!r.ok || !j || j.error) {
+      // pass OpenRouter's own explanation along so the page can show it (rate limit, bad model, provider trouble)
+      const e = (j && j.error) || {}, code = r.ok ? parseInt(e.code, 10) : r.status;
+      let why = typeof e === 'string' ? e : (e.message || 'upstream error');
+      const raw = e.metadata && e.metadata.raw; if (raw) why += ' (' + (typeof raw === 'string' ? raw : JSON.stringify(raw)).slice(0, 200) + ')';
+      return send(res, code >= 400 && code < 600 ? code : 502, { error: { message: why.slice(0, 400) } });
+    }
     const text = (j.choices && j.choices[0] && j.choices[0].message && j.choices[0].message.content) || '';
     const cut = j.choices && j.choices[0] && j.choices[0].finish_reason === 'length';
     send(res, 200, { content: [{ type: 'text', text }], stop_reason: cut ? 'max_tokens' : 'end_turn' });

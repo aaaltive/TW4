@@ -1465,13 +1465,13 @@ function parseJSON(t){var a=String(t).indexOf('{'),b=String(t).lastIndexOf('}');
 function errText(e){
   var c=e&&e.code;
   if(c==='not_granted')return 'Asking AI was not allowed. Allow it when you are asked.';
-  if(c==='rate_limited')return 'Too many requests at once. Wait a moment and try again.';
+  if(c==='rate_limited')return 'Too many requests at once. Wait a moment and try again.'+(e.detail?' ('+e.detail+')':'');
   if(c==='cancelled')return 'Stopped.';
   if(c==='bad_json')return 'AI’s answer was not in the expected format.';
   if(c==='no_hidden')return 'Set up AI’s hidden cards first (AI tab).';
   if(c==='unavailable')return 'AI cannot be asked yet. Open this page inside Claude, or add an API key in Setup.';
-  if(c==='bad_key')return 'The API key was rejected. Check it in Setup (the table passcode, if this page is hosted on the table server).';
-  if(c==='bad_model')return 'That model name was not found. Check the model names in Setup.';
+  if(c==='bad_key')return 'The API key was rejected. Check it in Setup (the table passcode, if this page is hosted on the table server).'+(e.detail?' ('+e.detail+')':'');
+  if(c==='bad_model')return 'That model name was not found. Check the model names in Setup.'+(e.detail?' ('+e.detail+')':'');
   if(c==='network')return 'Could not reach the Anthropic API. Check your connection.';
   if(c&&String(c).indexOf('http_')===0)return 'The API returned an error ('+String(c).slice(5)+')'+(e.detail?': '+e.detail:'')+'.';
   return 'Something went wrong ('+(c||'unknown')+').';
