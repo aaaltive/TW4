@@ -1477,9 +1477,10 @@ function errText(e){
   return 'Something went wrong ('+(c||'unknown')+').';
 }
 var AIK={turn:'Turn',strategy:'Strategy card',secondary:'Secondary ability',setup:'Setup',status:'Status phase',agenda:'Agenda',free:'Reply',peek:'Agenda peek',precombat:'Action cards before combat',retreat:'Retreat decision',hits:'Hit assignment',combat:'Combat'};
-function aiNote(w,x,k){
+function aiNote(w,x,k,rid){
   G.aiLog=G.aiLog||[];
-  G.aiLog.unshift({t:Date.now(),r:G.round,ph:G.phase,w:w,k:k||'',x:String(x).slice(0,1200)});
+  var en={t:Date.now(),r:G.round,ph:G.phase,w:w,k:k||'',x:String(x).slice(0,1200)};if(rid)en.rid=rid;
+  G.aiLog.unshift(en);
   if(G.aiLog.length>80)G.aiLog.length=80;
 }
 function aiSummary(d){
@@ -1507,8 +1508,9 @@ async function claudeCall(kind,msg,tier){
   var prompt=claudePrompt(kind,msg),ctl=new AbortController(),r;ui.abort=ctl;
   try{r=await ui.sample(prompt,{cache:false,modelTier:tier||'default',signal:ctl.signal});}
   catch(e){if(!(e&&e.code==='cancelled'))aiNote('error',errText(e),kind);throw e;}
+  ui.rawN=(ui.rawN||0)+1;ui.lastRaw={id:ui.rawN,kind:kind,text:String(r.text)};
   var d=parseJSON(r.text);
-  if(!d)aiNote('error','The answer was not in the expected format. Start of the reply: '+String(r.text).slice(0,300),kind);
+  if(!d)aiNote('error','The answer was not in the expected format. Start of the reply: '+String(r.text).slice(0,300),kind,ui.rawN);
   else aiNote('ai',aiSummary(d),kind);
   if(d&&(d.play_action_cards||d.discard_action_cards||d.score_secret)){var lines=applyCards(d);if(lines.length)d.say=(d.say?d.say+' ':'')+lines.join(' ');}
   return {raw:r.text,data:d};
@@ -1526,8 +1528,8 @@ function applyCards(d){
 function applyCR(){
   var cr=ui.cr,d=cr&&cr.data,cp=claudeP(),hh=hGet();if(!d||!cp||!hh)return;
   cr.applyErr='';
-  if(d.tactical_action){var terr=tacCheckClaude(cp,d.tactical_action);if(terr){cr.applyErr=terr;aiNote('error','The app could not apply this: '+terr,cr.kind);return;}}
-  if(d.strategic_action){var serr=saCheckClaude(cp,d.strategic_action);if(serr){cr.applyErr=serr;aiNote('error','The app could not apply this: '+serr,cr.kind);return;}}
+  if(d.tactical_action){var terr=tacCheckClaude(cp,d.tactical_action);if(terr){cr.applyErr=terr;aiNote('error','The app could not apply this: '+terr,cr.kind,ui.lastRaw&&ui.lastRaw.id);return;}}
+  if(d.strategic_action){var serr=saCheckClaude(cp,d.strategic_action);if(serr){cr.applyErr=serr;aiNote('error','The app could not apply this: '+serr,cr.kind,ui.lastRaw&&ui.lastRaw.id);return;}}
   applyCards(d);
   (d.score_public||[]).forEach(function(id){var o=G.obj.pub.filter(function(x){return x.id===id;})[0],m=OBJM[id];if(!o||!m||o.by.indexOf(cp.id)>=0)return;o.by.push(cp.id);cp.vp+=m[4];log('AI scored '+m[1]+' (+'+m[4]+' VP)');});
   if(d.keep_secret&&hh.so.pending.indexOf(d.keep_secret)>=0){
@@ -1572,7 +1574,7 @@ async function askClaude(kind,msg){
   if(kind==='setup'&&!ui.cr.err){
     var hs=hGet(),dd=ui.cr.data||{};
     if(hs&&hs.so.pending.length){
-      if(hs.so.pending.indexOf(dd.keep_secret)<0){ui.cr.err='AI did not choose one of its dealt secret objectives. Dismiss this and ask again.';aiNote('error',ui.cr.err,'setup');}
+      if(hs.so.pending.indexOf(dd.keep_secret)<0){ui.cr.err='AI did not choose one of its dealt secret objectives. Dismiss this and ask again.';aiNote('error',ui.cr.err,'setup',ui.lastRaw&&ui.lastRaw.id);}
       else applyCR();
     }
   }
@@ -1613,7 +1615,7 @@ function renderAiHistory(){
   h+='<div class="row" style="margin-bottom:8px">'+armBtn('clearAi','Clear history','Tap again to clear','danger')+'<span class="mut small">'+L.length+' entries</span></div><div class="log"><ul>'+
     L.map(function(e){
       var who=e.w==='table'?'Table to AI':e.w==='error'?'Error':'AI',cl=e.w==='error'?' class="warn"':'';
-      return '<li><div class="meta"><b'+cl+'>'+who+'</b>'+(AIK[e.k]?' · '+esc(AIK[e.k]):'')+' · Round '+e.r+' · '+PH[e.ph]+'</div><div style="white-space:pre-wrap">'+esc(e.x)+'</div></li>';
+      return '<li><div class="meta"><b'+cl+'>'+who+'</b>'+(e.w==='error'&&e.rid&&ui.lastRaw&&ui.lastRaw.id===e.rid?' <button class="btn sm" data-act="rawShow">Show reply</button>':'')+(AIK[e.k]?' · '+esc(AIK[e.k]):'')+' · Round '+e.r+' · '+PH[e.ph]+'</div><div style="white-space:pre-wrap">'+esc(e.x)+'</div></li>';
     }).join('')+'</ul></div></div>';
   return h;
 }
@@ -1734,6 +1736,11 @@ function ext(a,d,el,ev){
     case 'clearLog':
       if(ui.arm!=='clearLog'){ui.arm='clearLog';clearTimeout(act.t);act.t=setTimeout(function(){ui.arm=null;render();},4000);return 2;}
       ui.arm=null;G.log=[];toast('Log cleared. Undo brings it back.');return 1;
+    case 'rawShow':if(ui.lastRaw)ui.alert={t:'Last reply from the AI',m:ui.lastRaw.text,copy:true};return 2;
+    case 'rawCopy':{
+      var rt=ui.alert&&ui.alert.m||'',done=function(){toast('Copied.');},fb=function(){var ta=$('#raw-box');if(!ta)return;ta.focus();ta.select();try{document.execCommand('copy')?done():toast('Press and hold to copy.');}catch(e){toast('Press and hold to copy.');}};
+      if(navigator.clipboard&&window.isSecureContext)navigator.clipboard.writeText(rt).then(done,fb);else fb();
+      return 0;}
     case 'alertOk':ui.alert=null;return 2;
     case 'alertBackdrop':if(ev&&el===ev.target){ui.alert=null;return 2;}return 0;
     case 'cDismiss':ui.cr=null;return 2;
@@ -1795,14 +1802,14 @@ async function claudePickStrategy(){
     applyCR();
     if(cnt()>had)toast(cp.name+' took '+(function(){var nm='';for(var n=1;n<=8;n++)if(G.strat[n].pid===cp.id)nm=STRATD[n-1][0];return nm;})()+'. '+(d.say||''));
     else fail='AI named a card that is not available.';
-    if(fail)aiNote('error',fail+' (it said: '+d.pick_strategy_card+')','strategy');
+    if(fail)aiNote('error',fail+' (it said: '+d.pick_strategy_card+')','strategy',ui.lastRaw&&ui.lastRaw.id);
   }catch(e){fail=errText(e);}
   if(fail){toast(fail+' Pick the card by hand.');ui.pick=cp.id;}
   ui.stratBusy=false;save();render();
 }
 
 function renderAlert(){
-  return '<div class="bd" style="align-items:center;z-index:60" data-act="alertBackdrop"><div class="sheet" role="alertdialog" aria-modal="true" aria-label="'+esc(ui.alert.t)+'" style="max-height:none;border-radius:18px;margin:16px;border-bottom:1px solid var(--line)"><div class="sheet-body"><h2 style="margin-bottom:8px">'+esc(ui.alert.t)+'</h2><p style="margin-top:0">'+esc(ui.alert.m)+'</p><button class="btn pri" style="width:100%" data-act="alertOk">OK</button></div></div></div>';
+  return '<div class="bd" style="align-items:center;z-index:60" data-act="alertBackdrop"><div class="sheet" role="alertdialog" aria-modal="true" aria-label="'+esc(ui.alert.t)+'" style="max-height:none;border-radius:18px;margin:16px;border-bottom:1px solid var(--line)"><div class="sheet-body"><h2 style="margin-bottom:8px">'+esc(ui.alert.t)+'</h2>'+(ui.alert.copy?'<textarea id="raw-box" readonly rows="12" style="width:100%;font:12px/1.4 monospace;box-sizing:border-box">'+esc(ui.alert.m)+'</textarea><div class="row" style="margin-top:8px"><button class="btn pri grow" data-act="rawCopy">Copy</button><button class="btn grow" data-act="alertOk">Close</button></div>':'<p style="margin-top:0">'+esc(ui.alert.m)+'</p><button class="btn pri" style="width:100%" data-act="alertOk">OK</button>')+'</div></div></div>';
 }
 
 function stratCardsText(){
