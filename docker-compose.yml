@@ -1,5 +1,6 @@
 # CasaOS: App Store > Custom Install > import this file, or run `docker compose up -d --build`.
-# Put the two secrets in a .env file next to this one (never commit it).
+# Put the secrets in a .env file next to this one (never commit it).
+# TABLE_PASSCODE plus at least one of the two keys is required.
 services:
   ti4:
     build: .
@@ -8,5 +9,7 @@ services:
     ports:
       - "8080:8080"
     environment:
-      ANTHROPIC_API_KEY: ${ANTHROPIC_API_KEY:?set in .env}
       TABLE_PASSCODE: ${TABLE_PASSCODE:?set in .env}
+      ANTHROPIC_API_KEY: ${ANTHROPIC_API_KEY:-}
+      OPENROUTER_API_KEY: ${OPENROUTER_API_KEY:-}
+      OPENROUTER_MODELS: ${OPENROUTER_MODELS:-}
