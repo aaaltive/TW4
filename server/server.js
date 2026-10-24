@@ -8,6 +8,8 @@ const crypto = require('crypto');
 const KEY = process.env.ANTHROPIC_API_KEY || '';
 const OR_KEY = process.env.OPENROUTER_API_KEY || '';
 const OR_PAID = (process.env.OPENROUTER_MODELS || '').split(',').map(s => s.trim()).filter(Boolean); // extra non-free models you explicitly allow
+const OR_URL = process.env.OPENROUTER_URL || 'https://openrouter.ai/api/v1/chat/completions';
+const OR_MAX_TOKENS = parseInt(process.env.OPENROUTER_MAX_TOKENS || '6000', 10); // free models often think out loud first, so they need more room
 const PASS = process.env.TABLE_PASSCODE || '';
 const PORT = parseInt(process.env.PORT || '8080', 10);
 const MODELS = (process.env.ALLOWED_MODELS || 'claude-sonnet-5-5,claude-haiku-5-5').split(',').map(s => s.trim()).filter(Boolean);
@@ -79,15 +81,16 @@ function readBody(req, max) {
 async function openrouter(res, model, messages, max_tokens) {
   const ctl = new AbortController(); const timer = setTimeout(() => ctl.abort(), 180000);
   try {
-    const r = await fetch('https://openrouter.ai/api/v1/chat/completions', {
+    const r = await fetch(OR_URL, {
       method: 'POST', signal: ctl.signal,
       headers: { 'content-type': 'application/json', authorization: 'Bearer ' + OR_KEY, 'x-title': 'TI4 table' },
-      body: JSON.stringify({ model, max_tokens, messages })
+      body: JSON.stringify({ model, max_tokens, messages: [{ role: 'system', content: 'Reply with ONLY the JSON object the user asks for. Do not write your reasoning, analysis or any other text before or after it.' }].concat(messages) })
     });
     const j = await r.json().catch(() => null);
     if (!r.ok || !j) return send(res, r.ok ? 502 : r.status, { error: 'upstream' });
     const text = (j.choices && j.choices[0] && j.choices[0].message && j.choices[0].message.content) || '';
-    send(res, 200, { content: [{ type: 'text', text }] });
+    const cut = j.choices && j.choices[0] && j.choices[0].finish_reason === 'length';
+    send(res, 200, { content: [{ type: 'text', text }], stop_reason: cut ? 'max_tokens' : 'end_turn' });
   } catch (e) { send(res, 502, { error: 'upstream' }); } finally { clearTimeout(timer); }
 }
 
@@ -103,7 +106,7 @@ async function claude(req, res, ip) {
   const max_tokens = Math.max(1, Math.min(parseInt(b.max_tokens, 10) || 2500, MAX_TOKENS_CAP));
   if (isOR(b.model)) {
     if (!orOk(b.model)) return send(res, 400, { error: 'model not allowed' });
-    return openrouter(res, b.model, msgs, max_tokens);
+    return openrouter(res, b.model, msgs, Math.max(max_tokens, OR_MAX_TOKENS));
   }
   if (!KEY) return send(res, 400, { error: 'anthropic not configured' });
   const model = MODELS.includes(b.model) ? b.model : MODELS[0];

@@ -1510,7 +1510,7 @@ async function claudeCall(kind,msg,tier){
   catch(e){if(!(e&&e.code==='cancelled'))aiNote('error',errText(e),kind);throw e;}
   ui.rawN=(ui.rawN||0)+1;ui.lastRaw={id:ui.rawN,kind:kind,text:String(r.text)};
   var d=parseJSON(r.text);
-  if(!d)aiNote('error','The answer was not in the expected format. Start of the reply: '+String(r.text).slice(0,300),kind,ui.rawN);
+  if(!d)aiNote('error',(r.cut?'The reply was cut off by the token limit before the JSON answer. ':'The answer was not in the expected format. ')+'Start of the reply: '+String(r.text).slice(0,300),kind,ui.rawN);
   else aiNote('ai',aiSummary(d),kind);
   if(d&&(d.play_action_cards||d.discard_action_cards||d.score_secret)){var lines=applyCards(d);if(lines.length)d.say=(d.say?d.say+' ':'')+lines.join(' ');}
   return {raw:r.text,data:d};
@@ -2963,7 +2963,7 @@ async function apiAsk(prompt,opts){
   }catch(e){if(e&&e.name==='AbortError')throw {code:'cancelled'};throw {code:'network'};}
   if(!res.ok){var det='';try{var jj=await res.json();det=(jj&&jj.error&&(jj.error.message||jj.error))||'';}catch(e){}throw {code:(res.status===401||res.status===403)?'bad_key':res.status===429?'rate_limited':res.status===404?'bad_model':'http_'+res.status,detail:String(det).slice(0,200)};}
   var j=await res.json();
-  return {text:(j.content||[]).filter(function(b){return b.type==='text';}).map(function(b){return b.text;}).join('')};
+  return {text:(j.content||[]).filter(function(b){return b.type==='text';}).map(function(b){return b.text;}).join(''),cut:j.stop_reason==='max_tokens'};
 }
 /* ---------- shared table state (only when served by the table server) ---------- */
 var SY={rev:-1,timer:null};
