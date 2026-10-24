@@ -14,6 +14,9 @@ const MODELS = (process.env.ALLOWED_MODELS || 'claude-sonnet-5-5,claude-haiku-5-
 const MAX_TOKENS_CAP = parseInt(process.env.MAX_TOKENS_CAP || '3000', 10);
 const MAX_BODY = parseInt(process.env.MAX_BODY_BYTES || String(300 * 1024), 10);
 const RATE_PER_MIN = parseInt(process.env.RATE_PER_MIN || '40', 10);
+const DATA_DIR = process.env.DATA_DIR || path.join(__dirname, '..', 'data');
+const STATE_FILE = path.join(DATA_DIR, 'state.json');
+const MAX_STATE = 4 * 1024 * 1024;
 const PAGE = process.env.PAGE_FILE || path.join(__dirname, '..', 'TI4.html');
 
 if ((!KEY && !OR_KEY) || !PASS) { console.error('TABLE_PASSCODE and at least one of ANTHROPIC_API_KEY / OPENROUTER_API_KEY must be set.'); process.exit(1); }
@@ -35,15 +38,38 @@ function locked(ip) { const f = fails.get(ip); return f && f.n >= 8 && Date.now(
 function noteFail(ip) { const f = fails.get(ip) || { n: 0, t: 0 }; f.n++; f.t = Date.now(); fails.set(ip, f); }
 setInterval(() => { const now = Date.now(); for (const [k, v] of hits) if (!v.some(t => now - t < 60000)) hits.delete(k); for (const [k, v] of fails) if (now - v.t > 15 * 60000) fails.delete(k); }, 60000).unref();
 
+// Shared game state: one game for the table, last write wins. Hidden cards are never sent here (the page keeps them per device).
+let STATE = { rev: 0, game: null };
+try { STATE = JSON.parse(fs.readFileSync(STATE_FILE, 'utf8')); } catch (e) {}
+function persist() {
+  try { fs.mkdirSync(DATA_DIR, { recursive: true }); fs.writeFileSync(STATE_FILE + '.tmp', JSON.stringify(STATE)); fs.renameSync(STATE_FILE + '.tmp', STATE_FILE); }
+  catch (e) { console.error('could not save state', e.message); }
+}
+async function state(req, res, ip, q) {
+  if (locked(ip)) return send(res, 429, { error: 'locked' });
+  if (!passOk(req.headers['x-table-pass'])) { noteFail(ip); return send(res, 401, { error: 'bad passcode' }); }
+  if (req.method === 'GET') {
+    if (q.get('rev') !== null && parseInt(q.get('rev'), 10) === STATE.rev) return send(res, 200, { rev: STATE.rev });
+    return send(res, 200, STATE);
+  }
+  let b;
+  try { b = JSON.parse(await readBody(req, MAX_STATE)); } catch (e) { return send(res, e.code === 413 ? 413 : 400, { error: 'bad body' }); }
+  if (!b || typeof b.game !== 'object' || !b.game || !Array.isArray(b.game.players) || typeof b.game.map !== 'object') return send(res, 400, { error: 'bad game' });
+  STATE = { rev: STATE.rev + 1, game: b.game };
+  persist();
+  send(res, 200, { rev: STATE.rev });
+}
+
 function send(res, code, obj) {
   res.writeHead(code, { 'content-type': 'application/json', 'cache-control': 'no-store' });
   res.end(JSON.stringify(obj));
 }
 
-function readBody(req) {
+function readBody(req, max) {
+  max = max || MAX_BODY;
   return new Promise((resolve, reject) => {
     let n = 0; const chunks = [];
-    req.on('data', c => { n += c.length; if (n > MAX_BODY) { reject(Object.assign(new Error('too big'), { code: 413 })); req.destroy(); } else chunks.push(c); });
+    req.on('data', c => { n += c.length; if (n > max) { reject(Object.assign(new Error('too big'), { code: 413 })); req.destroy(); } else chunks.push(c); });
     req.on('end', () => resolve(Buffer.concat(chunks).toString('utf8')));
     req.on('error', reject);
   });
@@ -98,6 +124,7 @@ http.createServer(async (req, res) => {
   const ip = req.socket.remoteAddress || '';
   const url = (req.url || '/').split('?')[0];
   if (req.method === 'GET' && url === '/api/health') return send(res, 200, { ok: true, proxy: true, anthropic: !!KEY, openrouter: !!OR_KEY });
+  if ((req.method === 'GET' || req.method === 'PUT') && url === '/api/state') return state(req, res, ip, new URL(req.url, 'http://x').searchParams);
   if (req.method === 'POST' && url === '/api/claude') return claude(req, res, ip);
   if (req.method === 'GET' && (url === '/' || url === '/index.html' || url === '/TI4.html')) {
     return fs.readFile(PAGE, (err, data) => {

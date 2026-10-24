@@ -237,7 +237,7 @@ function normalize(g){
   return g;
 }
 function load(){try{var t=localStorage.getItem(KEY);if(t)return normalize(JSON.parse(t));}catch(e){}return null;}
-function save(){try{localStorage.setItem(KEY,JSON.stringify(G));}catch(e){}}
+function save(){try{localStorage.setItem(KEY,JSON.stringify(G));}catch(e){}if(typeof syPush==='function')syPush();}
 var G=load()||newGame();
 var ui={tab:'map',layout:false,zoom:1,sheet:null,open:{},pick:null,arm:null,toast:'',io:'',resetY:false};
 
@@ -2906,6 +2906,33 @@ async function apiAsk(prompt,opts){
   var j=await res.json();
   return {text:(j.content||[]).filter(function(b){return b.type==='text';}).map(function(b){return b.text;}).join('')};
 }
+/* ---------- shared table state (only when served by the table server) ---------- */
+var SY={rev:-1,timer:null};
+function syOn(){return API.proxy&&!!API.pass;}
+function syHdr(){return {'content-type':'application/json','x-table-pass':API.pass};}
+function syPush(){
+  if(!syOn())return;
+  clearTimeout(SY.timer);
+  SY.timer=setTimeout(function(){
+    SY.timer=null;
+    fetch('api/state',{method:'PUT',headers:syHdr(),body:JSON.stringify({game:G})}).then(function(r){return r.ok?r.json():null;}).then(function(j){if(j&&typeof j.rev==='number')SY.rev=j.rev;}).catch(function(){});
+  },300);
+}
+function syBusy(){
+  var a=document.activeElement;
+  return !!(a&&/^(INPUT|TEXTAREA|SELECT)$/.test(a.tagName))||SY.timer||(ui.cr&&ui.cr.busy)||ui.stratBusy;
+}
+function syPoll(){
+  if(!syOn())return;
+  fetch('api/state?rev='+SY.rev,{headers:syHdr()}).then(function(r){return r.ok?r.json():null;}).then(function(j){
+    if(!j||typeof j.rev!=='number')return;
+    if(j.rev===SY.rev)return;
+    if(!j.game){if(SY.rev<=0){SY.rev=0;syPush();}return;}
+    if(syBusy())return;
+    try{G=normalize(j.game);SY.rev=j.rev;try{localStorage.setItem(KEY,JSON.stringify(G));}catch(e){}ui.undo=[];render();}catch(e){}
+  }).catch(function(){});
+}
+setInterval(syPoll,2000);
 function apiReady(){return API.proxy?!!API.pass:!!API.key;}
 function refreshAsker(){ui.sample=ui.builtin||(apiReady()?apiAsk:null);}
 function apiStatus(){
