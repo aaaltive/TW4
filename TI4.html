@@ -222,14 +222,14 @@ function layoutId(){
 function mkPlayer(id,name,color,claude){return {id:id,name:name,color:color,faction:'',claude:!!claude,vp:0,tg:0,co:0,cmd:{t:3,f:3,s:2},ac:0,so:0,techs:[],passed:false};}
 function newGame(){
   var strat={};for(var n=1;n<=8;n++)strat[n]={pid:null,ex:false};
-  return {v:1,gid:Math.random().toString(36).slice(2,10),obj:{pub:[],cust:null},agenda:{cur:null,laws:[],done:[]},snaps:[],strategy:'',agdMode:'app',packs:{pok:false},rings:3,off:{},used:{},mapSetup:null,round:1,phase:'setup',active:null,speaker:'p1',np:4,
-    players:[mkPlayer('p1','Player 1','red'),mkPlayer('p2','Player 2','blue'),mkPlayer('p3','Claude','green',true)],
+  return {v:1,gid:Math.random().toString(36).slice(2,10),obj:{pub:[],cust:null},agenda:{cur:null,laws:[],done:[]},snaps:[],aiLog:[],strategy:'',agdMode:'app',packs:{pok:false},rings:3,off:{},used:{},mapSetup:null,round:1,phase:'setup',active:null,speaker:'p1',np:4,
+    players:[mkPlayer('p1','Player 1','red'),mkPlayer('p2','Player 2','blue'),mkPlayer('p3','AI','green',true)],
     strat:strat,map:{},log:[],hidden:{}};
 }
 function blankSys(){return {tile:'',type:'system',wh:'',home:null,space:{},dm:{},cmd:[],planets:[]};}
 function normalize(g){
   var b=newGame();
-  g.packs=g.packs||b.packs;g.round=g.round||1;g.phase=PH[g.phase]?g.phase:'setup';g.np=g.np||10;
+  g.packs=g.packs||b.packs;g.aiLog=g.aiLog||[];g.round=g.round||1;g.phase=PH[g.phase]?g.phase:'setup';g.np=g.np||10;
   g.strat=g.strat||b.strat;for(var n=1;n<=8;n++)g.strat[n]=g.strat[n]||{pid:null,ex:false};
   g.map=g.map||{};g.log=g.log||[];g.hidden=g.hidden||{};g.rings=g.rings===2?2:3;g.off=g.off||{};g.used=g.used||{};g.mapSetup=g.mapSetup||null;g.gid=g.gid||Math.random().toString(36).slice(2,10);g.obj=g.obj||{pub:[],cust:null};g.agenda=g.agenda||{cur:null,laws:[],done:[]};g.snaps=g.snaps||[];g.strategy=g.strategy||'';g.agdMode=g.agdMode||'app';
   g.players=(g.players||[]).map(function(p){var m=mkPlayer(p.id,p.name,p.color,p.claude);for(var k in p)m[k]=p[k];m.cmd=p.cmd||m.cmd;m.techs=p.techs||[];return m;});
@@ -530,7 +530,7 @@ function renderPlayers(){
     h+='<h3 style="font-size:15px">Command tokens</h3><div class="stat-grid">'+ctr('Tactic',p.cmd.t,'data-act="cmd" data-p="'+p.id+'" data-k="t"')+ctr('Fleet',p.cmd.f,'data-act="cmd" data-p="'+p.id+'" data-k="f"')+ctr('Strategy',p.cmd.s,'data-act="cmd" data-p="'+p.id+'" data-k="s"')+'</div>';
     h+='<h3 style="font-size:15px">Strategy card</h3><div class="tags">';
     held.forEach(function(n){h+='<span class="tag'+(G.strat[n].ex?' ex':'')+'"><button class="x" style="color:var(--ink)" data-act="sex" data-n="'+n+'" aria-label="Take a strategic action with '+STRAT[n-1]+'">'+n+' '+STRAT[n-1]+'</button><button class="x" data-act="sclr" data-n="'+n+'" aria-label="Return '+STRAT[n-1]+'">×</button></span>';});
-    h+=(G.phase==='strategy'&&heldN(p.id)>=stratNeed()&&ui.pick!==p.id?'<span class="mut small" style="align-self:center">All chosen ('+heldN(p.id)+' of '+stratNeed()+')</span></div>':'<button class="btn sm" data-act="spick" data-p="'+p.id+'"'+(ui.stratBusy&&p.claude?' disabled':'')+'>'+(ui.pick===p.id?'Cancel':(p.claude&&ui.sample&&hGet()?(ui.stratBusy?'Claude is choosing…':'Let Claude pick'):'Pick card'))+(G.phase==='strategy'&&ui.pick!==p.id&&!ui.stratBusy?' ('+(heldN(p.id)+1)+' of '+stratNeed()+')':'')+'</button></div>');
+    h+=(G.phase==='strategy'&&heldN(p.id)>=stratNeed()&&ui.pick!==p.id?'<span class="mut small" style="align-self:center">All chosen ('+heldN(p.id)+' of '+stratNeed()+')</span></div>':'<button class="btn sm" data-act="spick" data-p="'+p.id+'"'+(ui.stratBusy&&p.claude?' disabled':'')+'>'+(ui.pick===p.id?'Cancel':(p.claude&&ui.sample&&hGet()?(ui.stratBusy?'AI is choosing…':'Let AI pick'):'Pick card'))+(G.phase==='strategy'&&ui.pick!==p.id&&!ui.stratBusy?' ('+(heldN(p.id)+1)+' of '+stratNeed()+')':'')+'</button></div>');
     if(ui.pick===p.id)h+='<div class="tags">'+(free.length?free.map(function(n){return '<button class="btn sm" data-act="sview" data-n="'+n+'" data-p="'+p.id+'">'+n+' '+STRAT[n-1]+'</button>';}).join(''):'<span class="mut small">All eight cards are taken.</span>')+'</div>';
     h+='<h3 style="font-size:15px;margin-top:12px">Technology</h3>'+(p.pend?'<div class="warn">'+esc(p.pend)+' <button class="btn sm" data-act="pendDone" data-p="'+p.id+'">Done</button></div>':'')+'<div class="tags">'+p.techs.map(function(t,ix){
       var tc=TECHC.filter(function(c){return c[0]===t.c;})[0]||TECHC[4];
@@ -553,13 +553,13 @@ function renderSetup(){
   var h='<div class="sec"><h2>Game flow</h2><div class="card"><div class="row"><label class="fld grow"><span>Round</span><input type="number" inputmode="numeric" min="1" value="'+G.round+'" data-chg="round"></label>'+
     '<label class="fld grow"><span>Phase</span><select data-chg="phase">'+Object.keys(PH).map(function(k){return '<option value="'+k+'"'+(k===G.phase?' selected':'')+'>'+PH[k]+'</option>';}).join('')+'</select></label></div>'+
     '<label class="fld" style="margin-top:8px"><span>Speaker</span><select data-chg="speaker">'+G.players.map(function(p){return '<option value="'+p.id+'"'+(G.speaker===p.id?' selected':'')+'>'+esc(p.name)+'</option>';}).join('')+'</select></label></div></div>';
-  h+='<div class="sec"><h2>Players</h2><p class="mut small" style="margin-top:-4px">Seat order runs clockwise. Mark the player Claude controls.</p>';
+  h+='<div class="sec"><h2>Players</h2><p class="mut small" style="margin-top:-4px">Seat order runs clockwise. Mark the seat the AI controls.</p>';
   var used={},dup=false;G.players.forEach(function(p){if(used[p.color])dup=true;used[p.color]=1;});
   G.players.forEach(function(p,ix){
     h+='<div class="card pcard" style="--c:'+col(p)+'"><div class="row"><label class="fld grow"><span>Name</span><input type="text" value="'+esc(p.name)+'" data-chg="pname" data-p="'+p.id+'"></label>'+
       '<label class="fld" style="width:110px"><span>Color</span><select data-chg="pcol" data-p="'+p.id+'">'+Object.keys(COLORS).map(function(c){return '<option value="'+c+'"'+(p.color===c?' selected':'')+'>'+c+'</option>';}).join('')+'</select></label></div>'+
       '<label class="fld" style="margin-top:8px"><span>Faction</span><select data-chg="pfac" data-p="'+p.id+'"><option value="">Not chosen</option>'+FACTIONS.filter(function(f){return !f[2]||G.packs[f[2]];}).map(function(f){return '<option value="'+f[0]+'"'+(p.faction===f[0]?' selected':'')+'>'+esc(f[1])+'</option>';}).join('')+'</select></label>'+
-      '<div class="row" style="margin-top:8px"><label class="row grow" style="min-height:40px"><input type="checkbox" '+(p.claude?'checked':'')+' data-chg="pclaude" data-p="'+p.id+'" style="width:20px;height:20px"> Claude plays this seat</label>'+
+      '<div class="row" style="margin-top:8px"><label class="row grow" style="min-height:40px"><input type="checkbox" '+(p.claude?'checked':'')+' data-chg="pclaude" data-p="'+p.id+'" style="width:20px;height:20px"> AI plays this seat</label>'+
       '<button class="btn sm" data-act="pup" data-p="'+p.id+'" '+(ix===0?'disabled':'')+' aria-label="Move earlier">↑</button><button class="btn sm" data-act="pdn" data-p="'+p.id+'" '+(ix===G.players.length-1?'disabled':'')+' aria-label="Move later">↓</button>'+
       '<button class="btn sm danger" data-act="prem" data-p="'+p.id+'">'+(ui.arm==='prem'+p.id?'Tap to confirm':'Remove')+'</button></div></div>';
   });
@@ -570,7 +570,7 @@ function renderSetup(){
   h+='<div class="sec"><h2>Starting position</h2><div class="card"><p class="mut small" style="margin-top:0">Places each player’s starting ships, ground forces and structures in their home system, and adds their starting technology. A random map does this for you. Use this button when you built the map yourself and set each home system on it.</p><button class="btn" data-act="startAll">Place starting units and technology</button></div></div>';
   h+='<div class="sec"><h2>Content</h2><div class="card"><label class="row" style="min-height:44px"><input type="checkbox" '+(G.packs.pok?'checked':'')+' data-chg="pok" style="width:20px;height:20px"> Prophecy of Kings (mechs, 7 more factions, gamma wormhole)</label></div></div>';
   h+=renderApi();
-  h+='<div class="sec"><h2>Save and load</h2><div class="card"><p class="mut small" style="margin-top:0">The game saves on this device automatically. Use a file to move it elsewhere or share it with Claude.</p><div class="row"><button class="btn" data-act="saveFile">Save JSON file</button><button class="btn" data-act="showJson">Show JSON</button><button class="btn" data-act="loadJson">Load from text</button></div>'+
+  h+='<div class="sec"><h2>Save and load</h2><div class="card"><p class="mut small" style="margin-top:0">The game saves on this device automatically. Use a file to move it elsewhere or share it with AI.</p><div class="row"><button class="btn" data-act="saveFile">Save JSON file</button><button class="btn" data-act="showJson">Show JSON</button><button class="btn" data-act="loadJson">Load from text</button></div>'+
     '<label class="fld" style="margin-top:10px"><span>Load from file</span><input type="file" accept=".json,application/json" data-chg="file"></label>'+
     (ui.ioOpen?'<textarea id="io" style="margin-top:10px" aria-label="Game JSON">'+esc(ui.io)+'</textarea>':'')+'</div></div>';
   h+='<div class="sec"><h2>Reset</h2><div class="row">'+armBtn('clearMap','Clear the map','Tap again to clear','danger')+armBtn('newGame','New game, same players','Tap again to start over','danger')+'</div></div>';
@@ -583,7 +583,7 @@ function render(){
   if(io)ui.io=io.value;
   ui.resetY=false;
   var body=ui.tab==='map'?renderMap():ui.tab==='players'?renderPlayers():ui.tab==='cards'?renderCards():ui.tab==='claude'?renderClaude():ui.tab==='log'?renderLog():renderSetup();
-  var nav=[['map','Map'],['players','Players'],['cards','Cards'],['claude','Claude'],['log','Log'],['setup','Setup']].map(function(t){return '<button class="'+(ui.tab===t[0]?'on':'')+'" data-act="tab" data-v="'+t[0]+'">'+t[1]+'</button>';}).join('');
+  var nav=[['map','Map'],['players','Players'],['cards','Cards'],['claude','AI'],['log','Log'],['setup','Setup']].map(function(t){return '<button class="'+(ui.tab===t[0]?'on':'')+'" data-act="tab" data-v="'+t[0]+'">'+t[1]+'</button>';}).join('');
   app.innerHTML=renderTop()+'<main>'+body+'</main><nav class="nav" aria-label="Sections">'+nav+'</nav>'+(ui.sheet?renderSheet():'')+(ui.picker?renderPicker():'')+(ui.combat?renderCombat():'')+(G.sa?renderSA():'')+(ui.commit?renderCommit():'')+(ui.alert?renderAlert():'')+(ui.confirm?renderConfirm():'')+(ui.peek?renderPeek():'')+(ui.dice.open?renderDice():'')+(ui.tac?renderTac():'')+(ui.pre?renderPre():'')+(ui.gate?renderGate():'')+(ui.poolPick?renderPoolPick():'')+(ui.toast?'<div class="toast" role="status">'+esc(ui.toast)+'</div>':'');
   document.documentElement.classList.toggle('lock',!!(ui.sheet||ui.picker||ui.combat||ui.alert||ui.confirm||ui.peek||ui.dice.open||ui.tac||ui.pre||ui.gate||ui.poolPick));
   var sb2=$('.sheet-body');if(sb2)sb2.scrollTop=st;
@@ -724,7 +724,7 @@ document.addEventListener('keydown',function(e){
   if((e.key==='Enter'||e.key===' ')&&e.target.matches&&e.target.matches('g[data-act]')){e.preventDefault();e.target.dispatchEvent(new MouseEvent('click',{bubbles:true}));}
   if(e.key==='Escape'&&ui.sheet){closeSheet();commit();}
 });
-/* ====================== cards, combat, Claude player, playbook ====================== */
+/* ====================== cards, combat, AI player, playbook ====================== */
 var OBJM={},AGDM={},ACTM={},TECHM={},TECHN={};
 OBJ.forEach(function(o){OBJM[o[0]]=o;});
 AGD.forEach(function(a){AGDM[a[0]]=a;});
@@ -744,7 +744,7 @@ function claudeP(){return G.players.filter(function(p){return p.claude;})[0]||nu
 function shuffle(a){for(var i=a.length-1;i>0;i--){var j=Math.floor(Math.random()*(i+1)),t=a[i];a[i]=a[j];a[j]=t;}return a;}
 function cap(s){return s?s.charAt(0).toUpperCase()+s.slice(1):s;}
 
-/* ---------- Claude's hidden cards: stored apart from the game, never exported ---------- */
+/* ---------- AI's hidden cards: stored apart from the game, never exported ---------- */
 function hLoad(){try{var t=localStorage.getItem(HKEY);if(t){var h=JSON.parse(t);if(h&&h.gid===G.gid)return hFix(h);}}catch(e){}return null;}
 function hSave(){try{localStorage.setItem(HKEY,JSON.stringify(H));}catch(e){}}
 function hGet(){if(!H||H.gid!==G.gid)H=hLoad();return H;}
@@ -879,10 +879,10 @@ function runClaudeCommit(){
   while(list.length){
     var cm=list.shift(),s=G.map[T.slot],pl=s&&s.planets[cm.ix];if(!pl||pl.owner===cp.id)continue;
     var sp=s.space[cp.id]||{},want={infantry:Math.min(cm.units.infantry||0,sp.infantry||0),mech:Math.min(cm.units.mech||0,sp.mech||0)};
-    if(!want.infantry&&!want.mech){log('Claude had no ground forces left to land on '+pl.name);continue;}
-    var rm=isMecatolPlanet(pl)&&!G.obj.cust;if(rm){takeCustodians(cp.id);toast('Claude spends 6 influence to remove the Custodians token: exhaust its planets worth 6 influence.');}
+    if(!want.infantry&&!want.mech){log('AI had no ground forces left to land on '+pl.name);continue;}
+    var rm=isMecatolPlanet(pl)&&!G.obj.cust;if(rm){takeCustodians(cp.id);toast('AI spends 6 influence to remove the Custodians token: exhaust its planets worth 6 influence.');}
     var moved=commitUnits(cp.id,T.slot,cm.ix,want);
-    log('Claude committed '+moved.join(', ')+' to '+pl.name);
+    log('AI committed '+moved.join(', ')+' to '+pl.name);
     resolveInvasion(T.slot,cm.ix,cp.id);
     if(ui.combat){save();render();return;}
   }
@@ -995,7 +995,7 @@ async function saAskClaude(){
     if(G.sa!==S)return;
     S.busy=false;if(d.say)toast(cp.name+': '+d.say);
     if(d.resolve&&(!saCostsToken(S.n)||cp.cmd.s>0)){ui.saNotes=ui.saNotes||{};ui.saNotes[cp.id]=(d.steps||[]).join(' ');saYes();}else saNo();
-  }catch(e){if(G.sa===S){S.busy=false;toast('Claude could not decide. '+errText(e));}}
+  }catch(e){if(G.sa===S){S.busy=false;toast('AI could not decide. '+errText(e));}}
   save();render();
 }
 function saCardNum(cp,sa){
@@ -1006,7 +1006,7 @@ function saCheckClaude(cp,sa){
   var n=saCardNum(cp,sa);
   if(!n)return 'There is no strategy card called '+((sa&&sa.card)||'(none)')+'.';
   if(G.phase!=='action')return 'A strategic action can only be taken in the action phase.';
-  if(G.strat[n].pid!==cp.id)return 'Claude does not hold the '+saName(n)+' strategy card.';
+  if(G.strat[n].pid!==cp.id)return 'AI does not hold the '+saName(n)+' strategy card.';
   if(G.strat[n].ex)return 'The '+saName(n)+' strategy card has already been used this round.';
   return '';
 }
@@ -1016,7 +1016,7 @@ function renderSA(){
   function box(t,x){return '<div class="card" style="margin-top:8px"><b>'+t+'</b><div class="small" style="margin-top:4px">'+esc(x)+'</div></div>';}
   if(S.step==='primary'){
     title='Primary ability';
-    body='<p style="margin:6px 0 0"><b>'+esc(h0.name)+'</b> resolves the primary ability now.'+(h0.claude?' Claude’s choices are on its answer card.':'')+'</p>'+box('Primary',st.p)+box('Secondary (the other players choose next)',st.s);
+    body='<p style="margin:6px 0 0"><b>'+esc(h0.name)+'</b> resolves the primary ability now.'+(h0.claude?' AI’s choices are on its answer card.':'')+'</p>'+box('Primary',st.p)+box('Secondary (the other players choose next)',st.s);
     btns=(h0.claude?'':'<button class="btn grow" data-act="saCancel">Cancel</button>')+'<button class="btn pri grow" data-act="saPrimaryDone">Primary resolved</button>';
   }else if(S.step==='decide'){
     var q=P(S.others[S.i]),cost=saCostsToken(S.n),noTok=cost&&q.cmd.s<1;title=q.name+': resolve the secondary?';
@@ -1028,7 +1028,7 @@ function renderSA(){
     }
   }else{
     var pid=S.joined[S.j],r=P(pid);title=r.name+': resolve the secondary';
-    body='<p style="margin:6px 0 0">'+(S.j+1)+' of '+S.joined.length+' resolving.'+(saCostsToken(S.n)?' Spent 1 strategy token.':'')+'</p>'+box('Secondary',st.s)+((ui.saNotes&&ui.saNotes[pid])?box('Claude’s choices',ui.saNotes[pid]):'');
+    body='<p style="margin:6px 0 0">'+(S.j+1)+' of '+S.joined.length+' resolving.'+(saCostsToken(S.n)?' Spent 1 strategy token.':'')+'</p>'+box('Secondary',st.s)+((ui.saNotes&&ui.saNotes[pid])?box('AI’s choices',ui.saNotes[pid]):'');
     btns='<button class="btn pri grow" data-act="saResolved">Secondary resolved</button>';
   }
   return '<div class="bd" style="align-items:center;z-index:59"><div class="sheet" role="alertdialog" aria-modal="true" aria-label="'+esc(title)+'" style="max-height:88%;border-radius:18px;margin:16px;border-bottom:1px solid var(--line)"><div class="sheet-body">'+head+'<h2 style="margin:4px 0 4px">'+esc(title)+'</h2>'+body+'<div class="row" style="margin-top:12px">'+btns+'</div></div></div></div>';
@@ -1180,19 +1180,19 @@ function snapshot(){
 function debriefText(){
   var cp=claudeP(),L=[];
   L.push('TWILIGHT IMPERIUM DEBRIEF');
-  L.push('Edition: '+(G.packs.pok?'base game with Prophecy of Kings':'base game')+'. Rounds played: '+G.round+'. Strategy chosen for Claude: '+(G.strategy||'none')+'.');
-  L.push('Players: '+G.players.map(function(p){return p.name+(p.claude?' (Claude)':'')+' as '+(fname(p.faction)||'unknown faction')+', final VP '+p.vp;}).join('; ')+'.');
+  L.push('Edition: '+(G.packs.pok?'base game with Prophecy of Kings':'base game')+'. Rounds played: '+G.round+'. Strategy chosen for AI: '+(G.strategy||'none')+'.');
+  L.push('Players: '+G.players.map(function(p){return p.name+(p.claude?' (AI)':'')+' as '+(fname(p.faction)||'unknown faction')+', final VP '+p.vp;}).join('; ')+'.');
   L.push('');L.push('END OF ROUND SNAPSHOTS (VP, trade goods, planets, resources/influence, tech, ships, ground forces):');
   G.snaps.forEach(function(s){
     L.push('Round '+s.r+': '+G.players.map(function(p){var x=s.p[p.id];return x?p.name+' '+x.vp+'VP, '+x.tg+'tg, '+x.pl+' planets '+x.res+'/'+x.inf+', '+x.tech+' tech, '+x.ships+' ships, '+x.ground+' ground':'';}).filter(Boolean).join(' | '));
   });
   L.push('');L.push('PUBLIC OBJECTIVES: '+(G.obj.pub.map(function(o){var m=OBJM[o.id];return (m?m[1]:o.id)+' (scored by '+(o.by.map(pn).join(', ')||'nobody')+')';}).join('; ')||'none')+'. Custodians: '+(G.obj.cust?pn(G.obj.cust):'not taken')+'.');
   L.push('LAWS IN PLAY: '+(G.agenda.laws.map(function(l){var a=AGDM[l.id];return (a?a[1]:l.id)+(l.out?' ('+l.out+')':'');}).join('; ')||'none')+'.');
-  var key=G.log.filter(function(e){return /Combat|scored|Claude|took |agenda|Agenda|objective|passed|speaker/i.test(entryText(e));}).slice(0,80).reverse();
+  var key=G.log.filter(function(e){return /Combat|scored|AI|Claude|took |agenda|Agenda|objective|passed|speaker/i.test(entryText(e));}).slice(0,80).reverse();
   L.push('');L.push('KEY EVENTS (oldest first):');
   key.forEach(function(e){L.push('R'+e.r+' '+PH[e.ph]+': '+entryText(e));});
   if(cp&&hGet()&&hGet().notes)L.push('\nClaude’s last notes to itself: '+hGet().notes);
-  L.push('\nPlease review this game from Claude’s point of view, say what worked and what did not, and propose short playbook lessons. Give each lesson as one line in this format: tag1, tag2 | lesson text. Tags available: general, faction:<id>, vs:<id>, strategy:<id>.');
+  L.push('\nPlease review this game from AI’s point of view, say what worked and what did not, and propose short playbook lessons. Give each lesson as one line in this format: tag1, tag2 | lesson text. Tags available: general, faction:<id>, vs:<id>, strategy:<id>.');
   return L.join('\n');
 }
 
@@ -1246,7 +1246,7 @@ function renderPicker(){
   if(pk.k==='tech')chips=TECHC.map(function(c){return [c[0],c[1]];});
   return '<div class="bd" data-act="pkBackdrop"><div class="sheet" role="dialog" aria-modal="true" aria-label="'+title+'"><div class="sh-hd"><h2>'+title+'</h2><button class="btn" data-act="pkClose">Close</button></div><div class="sheet-body">'+
     '<input id="pk-q" type="search" data-inp="pkq" placeholder="Search by name or text" autocomplete="off" value="'+esc(pk.q)+'" aria-label="Search">'+
-    (pk.k==='peek'?'<div class="card" style="margin-top:8px"><div class="small">Choose the one or two agenda cards you looked at.</div><div class="small"><b>Selected:</b> '+((pk.sel||[]).map(function(id){return esc(AGDM[id][1]);}).join(', ')||'none')+'</div><button class="btn pri" style="margin-top:8px" data-act="peekGo"'+((pk.sel||[]).length?'':' disabled')+'>Show Claude</button></div>':'')+'<div class="tags">'+chips.map(function(c){return '<button class="tk" aria-pressed="'+(pk.f===c[0])+'" data-act="pkF" data-f="'+c[0]+'">'+c[1]+'</button>';}).join('')+'</div>'+
+    (pk.k==='peek'?'<div class="card" style="margin-top:8px"><div class="small">Choose the one or two agenda cards you looked at.</div><div class="small"><b>Selected:</b> '+((pk.sel||[]).map(function(id){return esc(AGDM[id][1]);}).join(', ')||'none')+'</div><button class="btn pri" style="margin-top:8px" data-act="peekGo"'+((pk.sel||[]).length?'':' disabled')+'>Show AI</button></div>':'')+'<div class="tags">'+chips.map(function(c){return '<button class="tk" aria-pressed="'+(pk.f===c[0])+'" data-act="pkF" data-f="'+c[0]+'">'+c[1]+'</button>';}).join('')+'</div>'+
     '<div id="pk-res">'+pickerResultsHTML()+'</div></div></div></div>';
 }
 
@@ -1272,8 +1272,8 @@ function renderCards(){
       '<label class="fld" style="margin-top:8px"><span>Outcome</span><input id="agd-out" type="text" placeholder="For won, or elected Player 2" autocomplete="off"></label>'+
       '<div class="row" style="margin-top:8px"><button class="btn pri" data-act="agdResolve">Resolve</button><button class="btn" data-act="agdCancel">Put back</button></div></div>';
   }else h+='<button class="btn pri" data-act="pkOpen" data-k="agd" data-f="">Agenda drawn</button>';
-  if(hGet()&&G.agdMode==='app'){if(!G.agenda.cur)h+='<div style="margin-top:8px"><button class="btn pri" data-act="agdDraw">Draw next agenda from the deck</button></div>';h+='<div style="margin-top:8px"><button class="btn" data-act="peekDeck">'+(claudeP()&&G.active===claudeP().id?'Let Claude look at the top two agenda cards (Politics)':'Politics: look at the top two agenda cards')+'</button><div class="mut small" style="margin-top:4px">Only the player using Politics should look. The app puts the cards back where they choose.</div></div>';}
-  if(claudeP()&&hGet()&&G.agdMode==='physical')h+='<div style="margin-top:8px"><button class="btn" data-act="pkOpen" data-k="peek" data-f="">Show Claude the top agenda cards</button><div class="mut small" style="margin-top:4px">Use this after Claude plays Politics, if you want it to arrange the deck knowing the cards. Otherwise it decides blind.</div></div>';
+  if(hGet()&&G.agdMode==='app'){if(!G.agenda.cur)h+='<div style="margin-top:8px"><button class="btn pri" data-act="agdDraw">Draw next agenda from the deck</button></div>';h+='<div style="margin-top:8px"><button class="btn" data-act="peekDeck">'+(claudeP()&&G.active===claudeP().id?'Let AI look at the top two agenda cards (Politics)':'Politics: look at the top two agenda cards')+'</button><div class="mut small" style="margin-top:4px">Only the player using Politics should look. The app puts the cards back where they choose.</div></div>';}
+  if(claudeP()&&hGet()&&G.agdMode==='physical')h+='<div style="margin-top:8px"><button class="btn" data-act="pkOpen" data-k="peek" data-f="">Show AI the top agenda cards</button><div class="mut small" style="margin-top:4px">Use this after AI plays Politics, if you want it to arrange the deck knowing the cards. Otherwise it decides blind.</div></div>';
   h+='<h3 style="margin:14px 0 6px;font-size:15px">Laws in play</h3>';
   if(!G.agenda.laws.length)h+='<p class="mut small">None.</p>';
   G.agenda.laws.forEach(function(l,ix){var a=AGDM[l.id];if(!a)return;h+='<div class="card"><div class="row"><b class="grow">'+esc(a[1])+'</b><button class="btn sm danger" data-act="lawDel" data-i="'+ix+'">Repeal</button></div><div class="small mut">'+esc(l.out||'')+'</div><p class="small" style="margin:6px 0 0">'+esc(a[6]||(l.out&&/against/i.test(l.out)?a[5]:a[4]))+'</p></div>';});
@@ -1342,7 +1342,7 @@ function applyHitsTo(c,pid,a){
   return done.join(', ')||'nothing changed';
 }
 function cbSetNotes(d){var hh=hGet();if(hh&&d&&typeof d.notes==='string'){hh.notes=d.notes.slice(0,600);hSave();}}
-/* ---------- what Claude is told ---------- */
+/* ---------- what AI is told ---------- */
 function unitStr(m){var o=[];UNITS.forEach(function(u){if(m&&m[u.id])o.push(m[u.id]+' '+u.n);});return o.join(', ');}
 function adjacent(slot){
   var p=POS[slot],out=[];if(!p)return out;
@@ -1464,64 +1464,92 @@ function claudePrompt(kind,msg){
 function parseJSON(t){var a=String(t).indexOf('{'),b=String(t).lastIndexOf('}');if(a<0||b<=a)return null;try{return JSON.parse(String(t).slice(a,b+1));}catch(e){return null;}}
 function errText(e){
   var c=e&&e.code;
-  if(c==='not_granted')return 'Asking Claude was not allowed. Allow it when you are asked.';
+  if(c==='not_granted')return 'Asking AI was not allowed. Allow it when you are asked.';
   if(c==='rate_limited')return 'Too many requests at once. Wait a moment and try again.';
   if(c==='cancelled')return 'Stopped.';
-  if(c==='bad_json')return 'Claude’s answer was not in the expected format.';
-  if(c==='no_hidden')return 'Set up Claude’s hidden cards first (Claude tab).';
-  if(c==='unavailable')return 'Claude cannot be asked yet. Open this page inside Claude, or add an API key in Setup.';
+  if(c==='bad_json')return 'AI’s answer was not in the expected format.';
+  if(c==='no_hidden')return 'Set up AI’s hidden cards first (AI tab).';
+  if(c==='unavailable')return 'AI cannot be asked yet. Open this page inside Claude, or add an API key in Setup.';
   if(c==='bad_key')return 'The API key was rejected. Check it in Setup (the table passcode, if this page is hosted on the table server).';
   if(c==='bad_model')return 'That model name was not found. Check the model names in Setup.';
   if(c==='network')return 'Could not reach the Anthropic API. Check your connection.';
-  if(c&&String(c).indexOf('http_')===0)return 'The API returned an error ('+String(c).slice(5)+').';
+  if(c&&String(c).indexOf('http_')===0)return 'The API returned an error ('+String(c).slice(5)+')'+(e.detail?': '+e.detail:'')+'.';
   return 'Something went wrong ('+(c||'unknown')+').';
+}
+var AIK={turn:'Turn',strategy:'Strategy card',secondary:'Secondary ability',setup:'Setup',status:'Status phase',agenda:'Agenda',free:'Reply',peek:'Agenda peek',precombat:'Action cards before combat',retreat:'Retreat decision',hits:'Hit assignment',combat:'Combat'};
+function aiNote(w,x,k){
+  G.aiLog=G.aiLog||[];
+  G.aiLog.unshift({t:Date.now(),r:G.round,ph:G.phase,w:w,k:k||'',x:String(x).slice(0,1200)});
+  if(G.aiLog.length>80)G.aiLog.length=80;
+}
+function aiSummary(d){
+  var o=[],names=function(ids,M,i){return (ids||[]).map(function(id){return M[id]?M[id][i]:id;}).join(', ');},
+    done={say:1,notes:1,steps:1,keep_secret:1,discard_action_cards:1,pick_strategy_card:1,tactical_action:1,strategic_action:1,play_action_cards:1,score_secret:1,score_public:1,vote:1,tokens:1,pass:1};
+  if(d.say)o.push(String(d.say));
+  if(d.pick_strategy_card)o.push('Picks the strategy card: '+d.pick_strategy_card+'.');
+  if(d.keep_secret)o.push('Keeps one secret objective.');
+  if(d.tactical_action){try{o.push('Tactical action: '+tacDescribe(d.tactical_action).join(' '));}catch(e){o.push('Takes a tactical action.');}}
+  if(d.strategic_action)o.push('Takes a strategic action.');
+  if(d.play_action_cards&&d.play_action_cards.length)o.push('Plays: '+names(d.play_action_cards,ACTM,1)+'.');
+  if(d.score_secret&&d.score_secret.length)o.push('Scores a secret objective.');
+  if(d.score_public&&d.score_public.length)o.push('Scores: '+names(d.score_public,OBJM,1)+'.');
+  if(d.vote)o.push('Votes: '+(d.vote.outcome||'abstain')+(d.vote.votes?' with '+d.vote.votes+' votes':'')+'.');
+  if(d.tokens)o.push('Command tokens after: '+(d.tokens.t||0)+' tactic, '+(d.tokens.f||0)+' fleet, '+(d.tokens.s||0)+' strategy.');
+  if(d.pass)o.push('Passes.');
+  if(d.steps&&d.steps.length)o.push('Steps: '+d.steps.join(' '));
+  Object.keys(d).forEach(function(k){if(done[k])return;var v=d[k];if(v===null||v===''||v===false||(Array.isArray(v)&&!v.length))return;o.push(k.replace(/_/g,' ')+': '+(typeof v==='object'?JSON.stringify(v):String(v)));});
+  return o.join('\n')||'(empty answer)';
 }
 async function claudeCall(kind,msg,tier){
   if(!ui.sample)throw {code:'unavailable'};
   if(!claudeP()||!hGet())throw {code:'no_hidden'};
-  var prompt=claudePrompt(kind,msg),ctl=new AbortController();ui.abort=ctl;
-  var r=await ui.sample(prompt,{cache:false,modelTier:tier||'default',signal:ctl.signal});
+  if(kind==='free'&&msg)aiNote('table',msg,kind);
+  var prompt=claudePrompt(kind,msg),ctl=new AbortController(),r;ui.abort=ctl;
+  try{r=await ui.sample(prompt,{cache:false,modelTier:tier||'default',signal:ctl.signal});}
+  catch(e){if(!(e&&e.code==='cancelled'))aiNote('error',errText(e),kind);throw e;}
   var d=parseJSON(r.text);
+  if(!d)aiNote('error','The answer was not in the expected format. Start of the reply: '+String(r.text).slice(0,300),kind);
+  else aiNote('ai',aiSummary(d),kind);
   if(d&&(d.play_action_cards||d.discard_action_cards||d.score_secret)){var lines=applyCards(d);if(lines.length)d.say=(d.say?d.say+' ':'')+lines.join(' ');}
   return {raw:r.text,data:d};
 }
 
-/* ---------- applying Claude's decisions ---------- */
+/* ---------- applying AI's decisions ---------- */
 function applyCards(d){
   var cp=claudeP(),hh=hGet(),out=[],changed=false;if(!cp||!hh)return out;
-  (d.play_action_cards||[]).forEach(function(id){var ix=hh.ac.hand.indexOf(id);if(ix<0)return;hh.ac.hand.splice(ix,1);hh.ac.disc.push(id);changed=true;var c=ACTM[id];log('Claude played the action card '+(c?c[1]:id));out.push('Claude plays '+(c?c[1]+': '+c[3]:id));});
-  (d.discard_action_cards||[]).forEach(function(id){var ix=hh.ac.hand.indexOf(id);if(ix<0)return;hh.ac.hand.splice(ix,1);hh.ac.disc.push(id);changed=true;log('Claude discarded an action card');});
-  (d.score_secret||[]).forEach(function(id){var ix=hh.so.hand.indexOf(id);if(ix<0)return;hh.so.hand.splice(ix,1);hh.so.scored.push(id);changed=true;var o=OBJM[id],pts=o?o[4]:1;cp.vp+=pts;log('Claude scored the secret objective '+(o?o[1]:id)+' (+'+pts+' VP)');out.push('Claude scores a secret objective: '+(o?o[1]+', '+o[3]:id));});
+  (d.play_action_cards||[]).forEach(function(id){var ix=hh.ac.hand.indexOf(id);if(ix<0)return;hh.ac.hand.splice(ix,1);hh.ac.disc.push(id);changed=true;var c=ACTM[id];log('AI played the action card '+(c?c[1]:id));out.push('AI plays '+(c?c[1]+': '+c[3]:id));});
+  (d.discard_action_cards||[]).forEach(function(id){var ix=hh.ac.hand.indexOf(id);if(ix<0)return;hh.ac.hand.splice(ix,1);hh.ac.disc.push(id);changed=true;log('AI discarded an action card');});
+  (d.score_secret||[]).forEach(function(id){var ix=hh.so.hand.indexOf(id);if(ix<0)return;hh.so.hand.splice(ix,1);hh.so.scored.push(id);changed=true;var o=OBJM[id],pts=o?o[4]:1;cp.vp+=pts;log('AI scored the secret objective '+(o?o[1]:id)+' (+'+pts+' VP)');out.push('AI scores a secret objective: '+(o?o[1]+', '+o[3]:id));});
   if(changed){hSync();hSave();ui.undo=[];}
   return out;
 }
 function applyCR(){
   var cr=ui.cr,d=cr&&cr.data,cp=claudeP(),hh=hGet();if(!d||!cp||!hh)return;
   cr.applyErr='';
-  if(d.tactical_action){var terr=tacCheckClaude(cp,d.tactical_action);if(terr){cr.applyErr=terr;return;}}
-  if(d.strategic_action){var serr=saCheckClaude(cp,d.strategic_action);if(serr){cr.applyErr=serr;return;}}
+  if(d.tactical_action){var terr=tacCheckClaude(cp,d.tactical_action);if(terr){cr.applyErr=terr;aiNote('error','The app could not apply this: '+terr,cr.kind);return;}}
+  if(d.strategic_action){var serr=saCheckClaude(cp,d.strategic_action);if(serr){cr.applyErr=serr;aiNote('error','The app could not apply this: '+serr,cr.kind);return;}}
   applyCards(d);
-  (d.score_public||[]).forEach(function(id){var o=G.obj.pub.filter(function(x){return x.id===id;})[0],m=OBJM[id];if(!o||!m||o.by.indexOf(cp.id)>=0)return;o.by.push(cp.id);cp.vp+=m[4];log('Claude scored '+m[1]+' (+'+m[4]+' VP)');});
+  (d.score_public||[]).forEach(function(id){var o=G.obj.pub.filter(function(x){return x.id===id;})[0],m=OBJM[id];if(!o||!m||o.by.indexOf(cp.id)>=0)return;o.by.push(cp.id);cp.vp+=m[4];log('AI scored '+m[1]+' (+'+m[4]+' VP)');});
   if(d.keep_secret&&hh.so.pending.indexOf(d.keep_secret)>=0){
     var rest=hh.so.pending.filter(function(x){return x!==d.keep_secret;});
-    hh.so.hand.push(d.keep_secret);hh.so.deck=shuffle(hh.so.deck.concat(rest));hh.so.pending=[];log('Claude chose its secret objective');
+    hh.so.hand.push(d.keep_secret);hh.so.deck=shuffle(hh.so.deck.concat(rest));hh.so.pending=[];log('AI chose its secret objective');
   }
   if(d.pick_strategy_card){
     var nm=String(d.pick_strategy_card).toLowerCase(),n=0;
     STRATD.forEach(function(s,ix){if(s[0].toLowerCase()===nm)n=ix+1;});
     if(n&&!G.strat[n].pid){G.strat[n]={pid:cp.id,ex:false};log(cp.name+' took '+STRATD[n-1][0]+' (initiative '+n+')');stratAdvance();}
   }
-  if(d.tokens&&typeof d.tokens==='object'){['t','f','s'].forEach(function(k){if(typeof d.tokens[k]==='number'&&d.tokens[k]>=0)cp.cmd[k]=Math.floor(d.tokens[k]);});log('Claude set its command tokens to '+cp.cmd.t+' tactic, '+cp.cmd.f+' fleet, '+cp.cmd.s+' strategy');}
-  if(d.vote&&d.vote.outcome)log('Claude votes '+(d.vote.votes||0)+' for '+d.vote.outcome);
-  var dn=Math.max(0,Math.min(6,Math.floor(+d.draw_action_cards||0)));if(dn){hDraw('ac',dn);log('Claude drew '+dn+' action card'+(dn===1?'':'s'));}
-  var dsn=Math.max(0,Math.min(3,Math.floor(+d.draw_secret_objectives||0)));if(dsn){hDraw('so',dsn);log('Claude drew '+dsn+' secret objective'+(dsn===1?'':'s'));}
+  if(d.tokens&&typeof d.tokens==='object'){['t','f','s'].forEach(function(k){if(typeof d.tokens[k]==='number'&&d.tokens[k]>=0)cp.cmd[k]=Math.floor(d.tokens[k]);});log('AI set its command tokens to '+cp.cmd.t+' tactic, '+cp.cmd.f+' fleet, '+cp.cmd.s+' strategy');}
+  if(d.vote&&d.vote.outcome)log('AI votes '+(d.vote.votes||0)+' for '+d.vote.outcome);
+  var dn=Math.max(0,Math.min(6,Math.floor(+d.draw_action_cards||0)));if(dn){hDraw('ac',dn);log('AI drew '+dn+' action card'+(dn===1?'':'s'));}
+  var dsn=Math.max(0,Math.min(3,Math.floor(+d.draw_secret_objectives||0)));if(dsn){hDraw('so',dsn);log('AI drew '+dsn+' secret objective'+(dsn===1?'':'s'));}
   if(d.new_speaker){var nsp=G.players.filter(function(q){return q.name.toLowerCase()===String(d.new_speaker).toLowerCase();})[0];if(nsp&&G.speaker!==nsp.id){G.speaker=nsp.id;log(nsp.name+' is now the speaker');}}
   if(d.gain&&typeof d.gain==='object'){
     var gt=Math.floor(+d.gain.trade_goods||0),gc=Math.floor(+d.gain.commodities||0),gv=Math.floor(+d.gain.victory_points||0),cmx=FSTART[cp.faction]?FSTART[cp.faction].c:99;
     if(gt)cp.tg=Math.max(0,cp.tg+gt);if(gc)cp.co=Math.max(0,Math.min(cmx,cp.co+gc));if(gv)cp.vp=Math.max(0,cp.vp+gv);
-    if(gt||gc||gv)log('Claude gains '+[gt?gt+' trade goods':'',gc?gc+' commodities':'',gv?gv+' VP':''].filter(Boolean).join(', '));
+    if(gt||gc||gv)log('AI gains '+[gt?gt+' trade goods':'',gc?gc+' commodities':'',gv?gv+' VP':''].filter(Boolean).join(', '));
   }
-  if(d.top||d.bottom){var agn=function(ids){return (ids||[]).map(function(id){return AGDM[id]?AGDM[id][1]:id;}).join(', ');};log('Claude arranged the top agenda cards. Top: '+(agn(d.top)||'none')+'. Bottom: '+(agn(d.bottom)||'none')+'.');}
+  if(d.top||d.bottom){var agn=function(ids){return (ids||[]).map(function(id){return AGDM[id]?AGDM[id][1]:id;}).join(', ');};log('AI arranged the top agenda cards. Top: '+(agn(d.top)||'none')+'. Bottom: '+(agn(d.bottom)||'none')+'.');}
   if(typeof d.notes==='string')hh.notes=d.notes.slice(0,600);
   hSync();hSave();ui.undo=[];
   var wasTurn=cr.kind==='turn'&&G.active===cp.id,combatStarted=false;
@@ -1532,43 +1560,43 @@ function applyCR(){
 }
 async function askClaude(kind,msg){
   var cp=claudeP();
-  if(!cp){toast('Mark a player as Claude in Setup first.');render();return;}
-  if(!hGet()){toast('Set up Claude’s hidden cards first.');render();return;}
+  if(!cp){toast('Mark a player as AI in Setup first.');render();return;}
+  if(!hGet()){toast('Set up AI’s hidden cards first.');render();return;}
   ui.cr={kind:kind,busy:true,raw:'',data:null,err:'',applied:false};render();
   try{
     var r=await claudeCall(kind,msg||'','default');
     ui.cr.raw=r.raw;ui.cr.data=r.data;
-    if(!r.data)ui.cr.err='Claude’s answer was not in the expected format.';
+    if(!r.data)ui.cr.err='AI’s answer was not in the expected format.';
   }catch(e){ui.cr.err=errText(e)+(e&&e.text?'':'');}
   ui.cr.busy=false;
   if(kind==='setup'&&!ui.cr.err){
     var hs=hGet(),dd=ui.cr.data||{};
     if(hs&&hs.so.pending.length){
-      if(hs.so.pending.indexOf(dd.keep_secret)<0)ui.cr.err='Claude did not choose one of its dealt secret objectives. Dismiss this and ask again.';
+      if(hs.so.pending.indexOf(dd.keep_secret)<0){ui.cr.err='AI did not choose one of its dealt secret objectives. Dismiss this and ask again.';aiNote('error',ui.cr.err,'setup');}
       else applyCR();
     }
   }
   save();render();
 }
 
-/* ---------- Claude tab ---------- */
+/* ---------- AI tab ---------- */
 function renderCR(){
   var cr=ui.cr;if(!cr)return '';
   var cp=claudeP(),h='<div class="card">';
-  if(cr.busy)return h+'<b>Claude is thinking…</b> <button class="btn sm" data-act="cStop">Stop</button><p class="mut small" style="margin-bottom:0">This can take up to a minute.</p></div>';
-  if(cr.err)return h+'<p class="warn" style="margin-top:0">'+esc(cr.err)+'</p>'+(cr.raw?'<details><summary class="small">Show Claude’s raw answer</summary><div class="small" style="white-space:pre-wrap">'+esc(cr.raw)+'</div></details>':'')+'<button class="btn" data-act="cDismiss" style="margin-top:8px">Dismiss</button></div>';
+  if(cr.busy)return h+'<b>AI is thinking…</b> <button class="btn sm" data-act="cStop">Stop</button><p class="mut small" style="margin-bottom:0">This can take up to a minute.</p></div>';
+  if(cr.err)return h+'<p class="warn" style="margin-top:0">'+esc(cr.err)+'</p>'+(cr.raw?'<details><summary class="small">Show AI’s raw answer</summary><div class="small" style="white-space:pre-wrap">'+esc(cr.raw)+'</div></details>':'')+'<button class="btn" data-act="cDismiss" style="margin-top:8px">Dismiss</button></div>';
   var d=cr.data||{};
-  if(d.say)h+='<p style="margin-top:0"><b>'+esc(cp?cp.name:'Claude')+':</b> '+esc(d.say)+'</p>';
+  if(d.say)h+='<p style="margin-top:0"><b>'+esc(cp?cp.name:'AI')+':</b> '+esc(d.say)+'</p>';
   if(d.pick_strategy_card)h+='<p><b>Takes the strategy card:</b> '+esc(d.pick_strategy_card)+'</p>';
   if(d.tactical_action){var tl=tacDescribe(d.tactical_action);h+='<p class="small" style="margin-bottom:2px"><b>Tactical action (the app updates the board for you):</b></p><ol style="padding-left:20px;margin:4px 0">'+tl.map(function(x){return '<li style="margin-bottom:4px">'+esc(x)+'</li>';}).join('')+'</ol>';}
-  if(cr.applyErr)h+='<p class="warn">The app could not apply this: '+esc(cr.applyErr)+'</p><button class="btn" data-act="cFix">Ask Claude to fix it</button>';
+  if(cr.applyErr)h+='<p class="warn">The app could not apply this: '+esc(cr.applyErr)+'</p><button class="btn" data-act="cFix">Ask AI to fix it</button>';
   if(d.steps&&d.steps.length)h+='<ol style="padding-left:20px;margin:6px 0">'+d.steps.map(function(s){return '<li style="margin-bottom:6px">'+esc(s)+'</li>';}).join('')+'</ol>';
   if(d.play_action_cards&&d.play_action_cards.length)h+='<p class="small"><b>Plays:</b> '+d.play_action_cards.map(function(id){var c=ACTM[id];return esc(c?c[1]+' — '+c[3]:id);}).join('; ')+'</p>';
   if(d.score_secret&&d.score_secret.length)h+='<p class="small"><b>Scores secret objective:</b> '+d.score_secret.map(function(id){var o=OBJM[id];return esc(o?o[1]+' — '+o[3]:id);}).join('; ')+'</p>';
   if(d.score_public&&d.score_public.length)h+='<p class="small"><b>Scores:</b> '+d.score_public.map(function(id){var o=OBJM[id];return esc(o?o[1]:id);}).join('; ')+'</p>';
   if(d.vote)h+='<p class="small"><b>Vote:</b> '+esc(d.vote.outcome||'abstain')+(d.vote.votes?' with '+d.vote.votes+' votes':'')+'</p>';
   if(d.tokens)h+='<p class="small"><b>Command tokens after:</b> '+esc((d.tokens.t||0)+' tactic, '+(d.tokens.f||0)+' fleet, '+(d.tokens.s||0)+' strategy')+'</p>';
-  if(d.draw_action_cards)h+='<p class="small"><b>Draws:</b> '+d.draw_action_cards+' action card'+(d.draw_action_cards===1?'':'s')+' (the app deals them, nobody draws for Claude)</p>';
+  if(d.draw_action_cards)h+='<p class="small"><b>Draws:</b> '+d.draw_action_cards+' action card'+(d.draw_action_cards===1?'':'s')+' (the app deals them, nobody draws for AI)</p>';
   if(d.draw_secret_objectives)h+='<p class="small"><b>Draws:</b> '+d.draw_secret_objectives+' secret objective'+(d.draw_secret_objectives===1?'':'s')+'</p>';
   if(d.politics_peek&&G.agdMode==='app')h+='<p class="small"><b>Looks at the top two agenda cards</b> (the app handles it).</p>';
   if(d.new_speaker)h+='<p class="small"><b>Speaker:</b> '+esc(d.new_speaker)+'</p>';
@@ -1577,35 +1605,46 @@ function renderCR(){
   if(d.pass)h+='<p class="small"><b>Passes.</b></p>';
   if(cr.applied)return h+'<p class="mut small" style="margin-bottom:0">Applied.</p><button class="btn sm" data-act="cDismiss">Dismiss</button></div>';
   var turn=cr.kind==='turn'&&cp&&G.active===cp.id;
-  return h+'<div class="row"><button class="btn pri" data-act="cApply">'+(turn?(d.pass?'Apply and pass':'Apply and end Claude’s turn'):(cr.kind==='peek'?'Done':'Apply'))+'</button><button class="btn" data-act="cDismiss">Dismiss</button></div></div>';
+  return h+'<div class="row"><button class="btn pri" data-act="cApply">'+(turn?(d.pass?'Apply and pass':'Apply and end AI’s turn'):(cr.kind==='peek'?'Done':'Apply'))+'</button><button class="btn" data-act="cDismiss">Dismiss</button></div></div>';
+}
+function renderAiHistory(){
+  var L=G.aiLog||[],h='<div class="sec"><h2>History</h2>';
+  if(!L.length)return h+'<p class="mut small" style="margin-top:0">Messages sent to the AI, its answers and any errors are kept here.</p></div>';
+  h+='<div class="row" style="margin-bottom:8px">'+armBtn('clearAi','Clear history','Tap again to clear','danger')+'<span class="mut small">'+L.length+' entries</span></div><div class="log"><ul>'+
+    L.map(function(e){
+      var who=e.w==='table'?'Table to AI':e.w==='error'?'Error':'AI',cl=e.w==='error'?' class="warn"':'';
+      return '<li><div class="meta"><b'+cl+'>'+who+'</b>'+(AIK[e.k]?' · '+esc(AIK[e.k]):'')+' · Round '+e.r+' · '+PH[e.ph]+'</div><div style="white-space:pre-wrap">'+esc(e.x)+'</div></li>';
+    }).join('')+'</ul></div></div>';
+  return h;
 }
 function renderClaude(){
   var cp=claudeP();
-  if(!cp)return '<p class="note">No player is marked as Claude. Open Setup and tick “Claude plays this seat”.</p>';
+  if(!cp)return '<p class="note">No player is marked as AI. Open Setup and tick “AI plays this seat”.</p>';
   var hh=hGet(),busy=ui.cr&&ui.cr.busy,h='';
   h+='<div class="card pcard" style="--c:'+col(cp)+'"><div class="row"><span class="dot" style="--c:'+col(cp)+'"></span><h3 class="grow">'+esc(cp.name)+' ✦</h3></div><div class="mut small">'+esc(fname(cp.faction)||'No faction chosen')+'</div>';
   if(!hh){
-    h+='<p>Claude’s hidden cards are not set up yet. Nobody sees them. Do this once at the start of a game.</p><button class="btn pri" data-act="cDeal">Set up the card decks and deal secret objectives to everyone</button>';
+    h+='<p>AI’s hidden cards are not set up yet. Nobody sees them. Do this once at the start of a game.</p><button class="btn pri" data-act="cDeal">Set up the card decks and deal secret objectives to everyone</button>';
   }else{
     h+='<div class="stat-grid"><div class="st"><span class="stl">Action cards</span><b>'+hh.ac.hand.length+'</b></div><div class="st"><span class="stl">Secret objectives</span><b>'+hh.so.hand.length+(hh.so.pending.length?' <span class="mut small">(choosing 1 of '+hh.so.pending.length+')</span>':'')+'</b></div></div>'+
       '<div class="row"><button class="btn sm" data-act="cDraw" data-k="ac">Draw action card</button><button class="btn sm" data-act="cDraw" data-k="so">Draw secret objective</button></div>';
   }
   h+='</div>';
-  if(!ui.sample)h+='<p class="note">'+(ui.sampleChecked?'Claude can be asked from inside the Claude app, or from here with your own API key (Setup, Ask Claude outside the Claude app).':'Checking whether Claude can be asked…')+'</p>';
+  if(!ui.sample)h+='<p class="note">'+(ui.sampleChecked?'AI can be asked from inside the Claude app, or from here with your own API key (Setup, Ask AI outside the Claude app).':'Checking whether AI can be asked…')+'</p>';
   if(hh){
     var ph=G.phase,opts=[],waiting=!!(ui.cr&&ui.cr.data&&!ui.cr.err&&!ui.cr.applied);
-    if(hh.so.pending.length)opts.push(['setup','Claude keeps one secret objective']);
-    if(ph==='strategy')opts.push(['strategy','Claude picks a strategy card']);
-    else if(ph==='action')opts.push(['turn',G.active===cp.id?'Take Claude’s turn':'Ask for Claude’s turn (not its turn yet)']);
-    else if(ph==='status')opts.push(['status','Claude’s status phase']);
-    else if(ph==='agenda')opts.push(['agenda','Claude votes on the agenda']);
-    h+='<div class="sec"><h2>Ask Claude</h2>'+(waiting?'<p class="mut small" style="margin-top:0">Apply or dismiss the answer below first.</p>':'')+'<div class="row">'+opts.map(function(o){return '<button class="btn pri" data-act="cAsk" data-k="'+o[0]+'"'+(busy||waiting||!ui.sample?' disabled':'')+'>'+o[1]+'</button>';}).join('')+'</div>'+
-      '<label class="fld" style="margin-top:10px"><span>Say something to Claude (a trade offer, a question, a threat)</span><input id="cl-msg" type="text" autocomplete="off"></label><button class="btn" style="margin-top:8px" data-act="cSend"'+(busy||!ui.sample?' disabled':'')+'>Send</button></div>'+renderCR();
+    if(hh.so.pending.length)opts.push(['setup','AI keeps one secret objective']);
+    if(ph==='strategy')opts.push(['strategy','AI picks a strategy card']);
+    else if(ph==='action')opts.push(['turn',G.active===cp.id?'Take AI’s turn':'Ask for AI’s turn (not its turn yet)']);
+    else if(ph==='status')opts.push(['status','AI’s status phase']);
+    else if(ph==='agenda')opts.push(['agenda','AI votes on the agenda']);
+    h+='<div class="sec"><h2>Ask AI</h2>'+(waiting?'<p class="mut small" style="margin-top:0">Apply or dismiss the answer below first.</p>':'')+'<div class="row">'+opts.map(function(o){return '<button class="btn pri" data-act="cAsk" data-k="'+o[0]+'"'+(busy||waiting||!ui.sample?' disabled':'')+'>'+o[1]+'</button>';}).join('')+'</div>'+
+      '<label class="fld" style="margin-top:10px"><span>Say something to AI (a trade offer, a question, a threat)</span><input id="cl-msg" type="text" autocomplete="off"></label><button class="btn" style="margin-top:8px" data-act="cSend"'+(busy||!ui.sample?' disabled':'')+'>Send</button></div>'+renderCR();
   }else h+=renderCR();
   var pb=pbSlice();
-  h+='<div class="sec"><h2>Game plan</h2><label class="fld"><span>Strategy for Claude this game</span><select data-chg="strategy">'+STRATEGIES.map(function(x){return '<option value="'+x[0]+'"'+(G.strategy===x[0]?' selected':'')+'>'+x[1]+'</option>';}).join('')+'</select></label></div>';
+  if(hh)h+=renderAiHistory();
+  h+='<div class="sec"><h2>Game plan</h2><label class="fld"><span>Strategy for AI this game</span><select data-chg="strategy">'+STRATEGIES.map(function(x){return '<option value="'+x[0]+'"'+(G.strategy===x[0]?' selected':'')+'>'+x[1]+'</option>';}).join('')+'</select></label></div>';
   h+='<details class="card"><summary><b>Playbook</b><span class="mut small" style="margin-left:auto">'+PB.lessons.length+' lessons</span></summary>'+
-    '<p class="mut small">Each call sends only the lessons that match Claude’s faction, its opponents and the chosen strategy, up to about 300 words. Now: '+pb.count+' lessons, '+pb.words+' words.</p>'+
+    '<p class="mut small">Each call sends only the lessons that match AI’s faction, its opponents and the chosen strategy, up to about 300 words. Now: '+pb.count+' lessons, '+pb.words+' words.</p>'+
     PB.lessons.map(function(l,ix){return '<div class="row" style="align-items:flex-start;border-top:1px solid var(--line);padding:8px 0"><div class="grow"><div class="small">'+esc(l.t)+'</div><div class="mut small">'+esc((l.tags||[]).join(', '))+'</div></div><button class="btn sm danger" data-act="pbDel" data-i="'+ix+'">Delete</button></div>';}).join('')+
     '<label class="fld" style="margin-top:10px"><span>New lesson</span><input id="pb-t" type="text" autocomplete="off"></label>'+
     '<label class="fld" style="margin-top:8px"><span>Tags, separated by commas (general, faction:sol, vs:hacan, strategy:aggressive)</span><input id="pb-g" type="text" autocomplete="off" value="general"></label>'+
@@ -1682,13 +1721,16 @@ function ext(a,d,el,ev){
     case 'cDeal':setupCards();return 1;
     case 'cDraw':
       if(!hGet())return 0;hDraw(d.k,1);hSave();hSync();
-      log('Claude drew '+(d.k==='ac'?'an action card':'a secret objective'));ui.undo=[];return 1;
+      log('AI drew '+(d.k==='ac'?'an action card':'a secret objective'));ui.undo=[];return 1;
     case 'cAsk':askClaude(d.k,'');return 0;
     case 'cSend':
       var mi=$('#cl-msg'),txt=mi?mi.value.trim():'';if(!txt)return 0;
-      log('Table talk to Claude: '+txt);askClaude('free',txt);return 0;
+      log('Table talk to AI: '+txt);askClaude('free',txt);return 0;
     case 'cApply':applyCR();return 1;
     case 'apiSave':case 'apiClear':case 'apiTest':apiAct(a);return 2;
+    case 'clearAi':
+      if(ui.arm!=='clearAi'){ui.arm='clearAi';clearTimeout(act.t);act.t=setTimeout(function(){ui.arm=null;render();},4000);return 2;}
+      ui.arm=null;G.aiLog=[];toast('History cleared.');return 1;
     case 'clearLog':
       if(ui.arm!=='clearLog'){ui.arm='clearLog';clearTimeout(act.t);act.t=setTimeout(function(){ui.arm=null;render();},4000);return 2;}
       ui.arm=null;G.log=[];toast('Log cleared. Undo brings it back.');return 1;
@@ -1752,7 +1794,8 @@ async function claudePickStrategy(){
     ui.cr={kind:'strategy',busy:false,raw:r.raw,data:d,err:'',applied:false};
     applyCR();
     if(cnt()>had)toast(cp.name+' took '+(function(){var nm='';for(var n=1;n<=8;n++)if(G.strat[n].pid===cp.id)nm=STRATD[n-1][0];return nm;})()+'. '+(d.say||''));
-    else fail='Claude named a card that is not available.';
+    else fail='AI named a card that is not available.';
+    if(fail)aiNote('error',fail+' (it said: '+d.pick_strategy_card+')','strategy');
   }catch(e){fail=errText(e);}
   if(fail){toast(fail+' Pick the card by hand.');ui.pick=cp.id;}
   ui.stratBusy=false;save();render();
@@ -1897,16 +1940,16 @@ function arrangeAgenda(top,bottom){
 async function claudeArrange(){
   var hh=hGet();if(!hh||G.agdMode!=='app'||!hh.ag.deck.length)return;
   var ids=hh.ag.deck.slice(-2).reverse();
-  toast('Claude is looking at the agenda deck…');render();
+  toast('AI is looking at the agenda deck…');render();
   try{
     var r=await claudeCall('peek',ids.join(','),'default'),d=r.data;
     if(!d)throw {code:'bad_json'};
     var top=(d.top||[]).filter(function(x){return ids.indexOf(x)>=0;}),bottom=(d.bottom||[]).filter(function(x){return ids.indexOf(x)>=0&&top.indexOf(x)<0;});
     ids.forEach(function(x){if(top.indexOf(x)<0&&bottom.indexOf(x)<0)top.push(x);});
     arrangeAgenda(top,bottom);cbSetNotes(d);
-    log('Claude looked at the top agenda cards and put '+bottom.length+' on the bottom'+(top.length?', '+top.length+' on top':''));
-    toast('Claude rearranged the agenda deck.');
-  }catch(e){toast('Claude could not arrange the agenda deck. '+errText(e));}
+    log('AI looked at the top agenda cards and put '+bottom.length+' on the bottom'+(top.length?', '+top.length+' on top':''));
+    toast('AI rearranged the agenda deck.');
+  }catch(e){toast('AI could not arrange the agenda deck. '+errText(e));}
   save();render();
 }
 
@@ -2288,7 +2331,7 @@ function tacRiftShips(cx,moves){
   return n;
 }
 
-/* ---------- Claude's structured tactical action ---------- */
+/* ---------- AI's structured tactical action ---------- */
 function tacParse(pid,tac){
   var out={t:+tac.activate,moves:{},bonus:Math.max(0,Math.min(3,Math.floor(+tac.movement_bonus||0))),err:''};
   if(!(out.t>=0)||!G.map[out.t]){out.err='The slot to activate ('+tac.activate+') is not on the map.';return out;}
@@ -2330,7 +2373,7 @@ function tacRunClaude(cp,tac){
   var lines=tacApplyMoves(cp.id,pr.t,pr.moves),s=G.map[pr.t];
   log(cp.name+' activated slot '+pr.t+' (tile '+s.tile+')'+(lines.length?' and moved: '+lines.join('; '):''));
   var cx=tacCtx(cp.id,pr.t,{bonus:pr.bonus}),rift=tacRiftShips(cx,pr.moves);
-  if(rift)ui.alert={t:'Gravity rift',m:'About '+rift+' of Claude’s ships moved through or out of a gravity rift. Roll one die for each of them: on a 1, 2 or 3 the ship is destroyed.'};
+  if(rift)ui.alert={t:'Gravity rift',m:'About '+rift+' of AI’s ships moved through or out of a gravity rift. Roll one die for each of them: on a 1, 2 or 3 the ship is destroyed.'};
   return pr;
 }
 function tacDescribe(tac){
@@ -2473,7 +2516,7 @@ function preEnter(){
   var pr=ui.pre,pid=preCur(),cl=claudeP();
   if(cl&&pid===cl.id){
     if(ui.sample&&hGet())setTimeout(prePlayClaude,0);
-    else{toast('Claude could not be asked about action cards.');setTimeout(preNext,0);}
+    else{toast('AI could not be asked about action cards.');setTimeout(preNext,0);}
   }
 }
 function preNext(){
@@ -2492,7 +2535,7 @@ async function prePlayClaude(){
     (d.play_action_cards||[]).forEach(function(id){var c=ACTM[id];if(c)pr.played.push({pid:cl.id,name:c[1],text:c[3]});});
     cbSetNotes(d);
     if(d.say)toast(cl.name+': '+d.say);
-  }catch(e){toast('Claude could not decide about action cards. '+errText(e));}
+  }catch(e){toast('AI could not decide about action cards. '+errText(e));}
   if(ui.pre===pr){pr.busy=false;preNext();}
 }
 
@@ -2533,9 +2576,9 @@ async function cbAskCards(){
   try{
     var r=await claudeCall('precombat','','quick'),d=r.data;if(!d)throw {code:'bad_json'};
     (d.play_action_cards||[]).forEach(function(id){var a=ACTM[id];if(a)c.played.push({pid:cl.id,name:a[1],text:a[3]});});
-    cbSetNotes(d);c.hmsg=(d.say||'Claude plays no action cards.');
-    if(d.play_action_cards&&d.play_action_cards.length)ui.alert={t:'Claude plays an action card',m:d.play_action_cards.map(function(id){var a=ACTM[id];return a?a[1]+': '+a[3]:'';}).join(' ')};
-  }catch(e){c.hmsg='Could not ask Claude about action cards. '+errText(e);}
+    cbSetNotes(d);c.hmsg=(d.say||'AI plays no action cards.');
+    if(d.play_action_cards&&d.play_action_cards.length)ui.alert={t:'AI plays an action card',m:d.play_action_cards.map(function(id){var a=ACTM[id];return a?a[1]+': '+a[3]:'';}).join(' ')};
+  }catch(e){c.hmsg='Could not ask AI about action cards. '+errText(e);}
   c.busy=false;ui.preCtx=null;save();render();
 }
 function cbEnd(){
@@ -2673,7 +2716,7 @@ async function cbAskRetreat(side){
   var c=ui.combat,cl=claudeP();if(!c||!cl||c.busy)return;
   side=side||(cl.id===c.d?'d':'a');
   if((side==='d'?c.d:c.a)!==cl.id||c.rd[side]||(side==='a'&&(!c.rd.d||c.ret.d)))return;
-  if(!ui.sample||!hGet()){c.msg='Claude could not be asked, so it fights on.';cbDecide(side,null);return;}
+  if(!ui.sample||!hGet()){c.msg='AI could not be asked, so it fights on.';cbDecide(side,null);return;}
   var targets=retreatTargets(cl.id,c.i),note='';
   c.busy='retreat';c.msg='';render();
   try{
@@ -2682,12 +2725,12 @@ async function cbAskRetreat(side){
       if(!d)throw {code:'bad_json',text:r.raw};
       cbSetNotes(d);
       var rt=d.retreat||{};
-      if(!rt.announce){c.msg='Claude will fight on. '+(d.say||'');c.busy=false;cbDecide(side,null);return;}
+      if(!rt.announce){c.msg='AI will fight on. '+(d.say||'');c.busy=false;cbDecide(side,null);return;}
       var to=(rt.to_slot===null||rt.to_slot===undefined)?-1:+rt.to_slot;
       if(targets.indexOf(to)<0){
         note='You named slot '+rt.to_slot+', which is not a legal retreat destination. '+(targets.length?'The legal destinations are: '+targets.join(', ')+'.':'You have no legal destination, so you cannot retreat.');
         if(attempt===0)continue;
-        c.msg='Claude could not name a legal retreat, so it fights on. '+(d.say||'');c.busy=false;cbDecide(side,null);return;
+        c.msg='AI could not name a legal retreat, so it fights on. '+(d.say||'');c.busy=false;cbDecide(side,null);return;
       }
       var s=ens(c.i),moved=[];
       Object.keys(rt.planet_units||{}).forEach(function(name){
@@ -2699,11 +2742,11 @@ async function cbAskRetreat(side){
           });
         });
       });
-      if(moved.length)log('Claude moved ground forces into space to retreat with them: '+moved.join(', '));
-      c.msg='Claude announces a retreat to slot '+to+' after this round. '+(d.say||'');
+      if(moved.length)log('AI moved ground forces into space to retreat with them: '+moved.join(', '));
+      c.msg='AI announces a retreat to slot '+to+' after this round. '+(d.say||'');
       c.busy=false;cbDecide(side,to);return;
     }
-  }catch(e){c.msg='Could not get Claude’s decision. Claude fights on. '+errText(e);c.busy=false;cbDecide(side,null);}
+  }catch(e){c.msg='Could not get AI’s decision. AI fights on. '+errText(e);c.busy=false;cbDecide(side,null);}
 }
 function cbMove(side){
   var c=ui.combat;if(!c||!c.retreating)return;
@@ -2761,8 +2804,8 @@ function renderCombat(){
     '<h3 style="margin:14px 0 4px">Round '+c.round+'</h3>';
   if(c.pl===null&&s.type==='nebula')h+='<div class="note" style="margin-bottom:8px">Nebula: the defender applies +1 to combat rolls, so the defender’s hits-on values are one lower.</div>';
   if(c.pl===null&&c.noSpace)h+='<div class="note" style="margin-bottom:8px">One side has no ships here, so there is no space combat. Resolve any space cannon below, then end the combat.</div>';
-  if(inC)h+='<div class="card">'+(c.busy?'<b>Claude is deciding…</b> <button class="btn sm" data-act="cStop">Stop</button>':(c.msg?esc(c.msg):'<span class="mut small">Claude decides on a retreat when it is its turn to announce.</span>'))+
-    (!c.busy&&cbRetreatActive(c)&&!c.rd[cl.id===c.d?'d':'a']&&(cl.id===c.d||c.rd.d)&&!(cl.id===c.a&&c.ret.d)?'<div style="margin-top:8px"><button class="btn sm" data-act="cbAskRetreat">Ask Claude about a retreat</button></div>':'')+'</div>';
+  if(inC)h+='<div class="card">'+(c.busy?'<b>AI is deciding…</b> <button class="btn sm" data-act="cStop">Stop</button>':(c.msg?esc(c.msg):'<span class="mut small">AI decides on a retreat when it is its turn to announce.</span>'))+
+    (!c.busy&&cbRetreatActive(c)&&!c.rd[cl.id===c.d?'d':'a']&&(cl.id===c.d||c.rd.d)&&!(cl.id===c.a&&c.ret.d)?'<div style="margin-top:8px"><button class="btn sm" data-act="cbAskRetreat">Ask AI about a retreat</button></div>':'')+'</div>';
   h+='<div class="card"><h3 style="font-size:15px;margin-bottom:6px">Action cards in play</h3>'+
     (c.played.length?c.played.map(function(x){return '<div class="small" style="margin-top:4px"><b>'+esc(pn(x.pid))+':</b> '+esc(x.name)+' — '+esc(x.text)+'</div>';}).join(''):'<div class="mut small">None yet. Adjust dice and hits-on by hand when a card changes them.</div>')+
     '<div class="row" style="margin-top:8px">'+[c.a,c.d].map(function(pid){var p=P(pid);return p.claude?'<button class="btn sm" data-act="cbClaudeCards"'+(c.busy?' disabled':'')+'>Ask '+esc(p.name)+' about cards</button>':'<button class="btn sm" data-act="gateOpen" data-p="'+pid+'">Play card: show '+esc(p.name)+'’s cards</button>';}).join('')+'</div></div>';
@@ -2817,11 +2860,11 @@ async function cbAskHits(n,note){
     var r=await claudeCall('hits',String(n),'quick'),d=r.data;
     if(!d)throw {code:'bad_json'};
     var res=applyHitsTo(c,cl.id,d.assign_hits||{});
-    c.hmsg='Claude takes '+n+' hit'+(n===1?'':'s')+': '+res+'. '+(d.say||'');
+    c.hmsg='AI takes '+n+' hit'+(n===1?'':'s')+': '+res+'. '+(d.say||'');
     log('Combat, slot '+c.i+': '+c.hmsg.trim());
-    if(!cbHasForces(c,cl.id))c.hmsg+=' Claude has no forces left here.';
+    if(!cbHasForces(c,cl.id))c.hmsg+=' AI has no forces left here.';
     cbSetNotes(d);hSave();
-  }catch(e){c.hmsg='Could not get Claude’s hit assignment. Assign the hits by hand. '+errText(e);}
+  }catch(e){c.hmsg='Could not get AI’s hit assignment. Assign the hits by hand. '+errText(e);}
   c.busy=false;c.hitNote='';save();render();
   if(!note&&ui.combat)cbNextDecision();
 }
@@ -2863,12 +2906,12 @@ function ext5(a,d,el,ev){
 /* ---------- undo ---------- */
 function claudeBar(){
   var cp=claudeP();if(!cp||G.active!==cp.id)return '';
-  if(!hGet())return '<div style="margin-top:8px"><button class="btn pri" style="width:100%" data-act="hdrClaude">It is Claude’s turn: set up its cards first</button></div>';
+  if(!hGet())return '<div style="margin-top:8px"><button class="btn pri" style="width:100%" data-act="hdrClaude">It is AI’s turn: set up its cards first</button></div>';
   if(G.phase==='strategy'&&heldN(cp.id)>=stratNeed())return '';
-  var lbl={strategy:'Claude picks a strategy card',action:'Claude takes its turn',status:'Claude’s status phase',agenda:'Claude votes',setup:(hGet()&&hGet().so.pending.length?'Claude keeps a secret objective':'')}[G.phase];
+  var lbl={strategy:'AI picks a strategy card',action:'AI takes its turn',status:'AI’s status phase',agenda:'AI votes',setup:(hGet()&&hGet().so.pending.length?'AI keeps a secret objective':'')}[G.phase];
   if(!lbl)return '';
   var busy=ui.stratBusy||(ui.cr&&ui.cr.busy);
-  return '<div style="margin-top:8px"><button class="btn pri" style="width:100%" data-act="hdrClaude"'+(busy||!ui.sample?' disabled':'')+'>'+(busy?'Claude is thinking…':lbl)+'</button></div>';
+  return '<div style="margin-top:8px"><button class="btn pri" style="width:100%" data-act="hdrClaude"'+(busy||!ui.sample?' disabled':'')+'>'+(busy?'AI is thinking…':lbl)+'</button></div>';
 }
 function pushUndo(pre){ui.undo.push(pre);if(ui.undo.length>30)ui.undo.shift();}
 function doUndo(){
@@ -2899,7 +2942,7 @@ document.addEventListener('input',function(e){
   var el=e.target.closest&&e.target.closest('[data-inp]');if(!el)return;
   if(el.dataset.inp==='pkq'&&ui.picker){ui.picker.q=el.value;var r=$('#pk-res');if(r)r.innerHTML=pickerResultsHTML();}
 });
-/* ---------- asking Claude outside the Claude app: your own API key ---------- */
+/* ---------- asking AI outside the Claude app: your own API key ---------- */
 var AKEY='ti4-apikey-v1';
 var API={key:'',pass:'',proxy:false,m1:'claude-sonnet-5-5',m2:'claude-haiku-5-5'};
 try{var _ak=JSON.parse(localStorage.getItem(AKEY)||'null');if(_ak)for(var _k in {key:1,pass:1,m1:1,m2:1})if(typeof _ak[_k]==='string'&&_ak[_k])API[_k]=_ak[_k];}catch(e){}
@@ -2911,7 +2954,7 @@ async function apiAsk(prompt,opts){
       headers:API.proxy?{'content-type':'application/json','x-table-pass':API.pass}:{'content-type':'application/json','x-api-key':API.key,'anthropic-version':'2023-06-01','anthropic-dangerous-direct-browser-access':'true'},
       body:JSON.stringify({model:model,max_tokens:2500,messages:[{role:'user',content:prompt}]})});
   }catch(e){if(e&&e.name==='AbortError')throw {code:'cancelled'};throw {code:'network'};}
-  if(!res.ok){throw {code:(res.status===401||res.status===403)?'bad_key':res.status===429?'rate_limited':res.status===404?'bad_model':'http_'+res.status};}
+  if(!res.ok){var det='';try{var jj=await res.json();det=(jj&&jj.error&&(jj.error.message||jj.error))||'';}catch(e){}throw {code:(res.status===401||res.status===403)?'bad_key':res.status===429?'rate_limited':res.status===404?'bad_model':'http_'+res.status,detail:String(det).slice(0,200)};}
   var j=await res.json();
   return {text:(j.content||[]).filter(function(b){return b.type==='text';}).map(function(b){return b.text;}).join('')};
 }
@@ -2966,12 +3009,12 @@ function syGate(msg){
 function apiReady(){return API.proxy?!!API.pass:!!API.key;}
 function refreshAsker(){ui.sample=ui.builtin||(apiReady()?apiAsk:null);}
 function apiStatus(){
-  if(ui.builtin)return 'Claude can already be asked from inside the Claude app. A key is only used when you open this page somewhere else.';
-  if(API.proxy)return API.pass?'Table passcode saved on this device. Claude is asked through the table server; the API key never leaves it.':'Enter the table passcode to turn on the Ask Claude buttons.';
-  return API.key?'API key saved on this device (ends in '+API.key.slice(-4)+'). Claude can be asked from this page.':'No key yet. Without one, the Ask Claude buttons stay off.';
+  if(ui.builtin)return 'AI can already be asked from inside the Claude app. A key is only used when you open this page somewhere else.';
+  if(API.proxy)return API.pass?'Table passcode saved on this device. AI is asked through the table server; the API key never leaves it.':'Enter the table passcode to turn on the Ask AI buttons.';
+  return API.key?'API key saved on this device (ends in '+API.key.slice(-4)+'). AI can be asked from this page.':'No key yet. Without one, the Ask AI buttons stay off.';
 }
 function renderApi(){
-  return '<div class="sec"><h2>Ask Claude outside the Claude app</h2><div class="card"><p class="mut small" style="margin-top:0">'+esc(apiStatus())+'</p>'+
+  return '<div class="sec"><h2>Ask AI outside the Claude app</h2><div class="card"><p class="mut small" style="margin-top:0">'+esc(apiStatus())+'</p>'+
     (API.proxy?'<label class="fld"><span>Table passcode</span><input id="api-pass" type="password" autocomplete="off" placeholder="'+(API.pass?'Saved. Type a new passcode to replace it':'Passcode')+'"></label>':'<label class="fld"><span>Anthropic API key</span><input id="api-key" type="password" autocomplete="off" placeholder="'+(API.key?'Saved. Type a new key to replace it':'sk-ant-…')+'"></label>')+
     '<div class="row" style="margin-top:8px"><label class="fld grow"><span>Model for turns and decisions (Claude id, or an OpenRouter id like vendor/name:free)</span><input id="api-m1" type="text" autocomplete="off" value="'+esc(API.m1)+'"></label><label class="fld grow"><span>Model for quick combat calls</span><input id="api-m2" type="text" autocomplete="off" value="'+esc(API.m2)+'"></label></div>'+
     '<div class="row" style="margin-top:10px"><button class="btn pri" data-act="apiSave">Save</button><button class="btn" data-act="apiTest"'+(apiReady()?'':' disabled')+'>Test</button><button class="btn danger" data-act="apiClear"'+(apiReady()?'':' disabled')+'>'+(API.proxy?'Remove passcode':'Remove key')+'</button></div>'+
