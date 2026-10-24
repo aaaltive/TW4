@@ -2881,6 +2881,7 @@ chg=function(a,d,el){
   if(JSON.stringify(G)!==pre){pushUndo(pre);_render();}
 };
 render=function(){
+  if(API.proxy&&!API.pass){syGate();return;}
   if(ui.show&&G.active!==ui.show)ui.show=null;
   G.players.forEach(function(p){p.techs.forEach(function(t){var m=TECHN[t.n.toLowerCase()];if(m&&m[2]!=='u'&&m[3]&&t.c!==m[3])t.c=m[3];});});
   _render();
@@ -2933,6 +2934,27 @@ function syPoll(){
   }).catch(function(){});
 }
 setInterval(syPoll,2000);
+/* on the table server, nothing works until the passcode is entered, so a new device joins the shared game instead of starting its own */
+function syGate(msg){
+  var a=document.getElementById('app');if(!a||(a.querySelector&&a.querySelector('#sy-pass')))return;
+  a.innerHTML='<div class="card" style="max-width:420px;margin:40px auto"><h2 style="margin-top:0">Join the table</h2><p class="mut small">Enter the table passcode to load the shared game on this device.</p>'+
+    '<label class="fld"><span>Table passcode</span><input id="sy-pass" type="password" autocomplete="off"></label><p id="sy-msg" class="warn small">'+esc(msg||'')+'</p>'+
+    '<button class="btn pri" id="sy-go" style="width:100%">Join</button></div>';
+  var go=document.getElementById('sy-go'),inp=document.getElementById('sy-pass');
+  function join(){
+    var v=inp.value.trim();if(!v)return;
+    fetch('api/state?rev=-1',{headers:{'x-table-pass':v}}).then(function(r){
+      if(r.status===401||r.status===429){var m=document.getElementById('sy-msg');if(m)m.textContent=r.status===429?'Too many tries. Wait a few minutes.':'Wrong passcode.';return null;}
+      return r.ok?r.json():null;
+    }).then(function(j){
+      if(!j)return;
+      API.pass=v;apiSave();refreshAsker();SY.rev=-1;
+      if(j.game){try{G=normalize(j.game);SY.rev=j.rev;localStorage.setItem(KEY,JSON.stringify(G));ui.undo=[];}catch(e){}}
+      render();
+    }).catch(function(){var m=document.getElementById('sy-msg');if(m)m.textContent='Could not reach the table server.';});
+  }
+  go.onclick=join;inp.onkeydown=function(e){if(e.key==='Enter')join();};inp.focus();
+}
 function apiReady(){return API.proxy?!!API.pass:!!API.key;}
 function refreshAsker(){ui.sample=ui.builtin||(apiReady()?apiAsk:null);}
 function apiStatus(){
