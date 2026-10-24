@@ -1540,7 +1540,15 @@ async function askClaude(kind,msg){
     ui.cr.raw=r.raw;ui.cr.data=r.data;
     if(!r.data)ui.cr.err='Claude’s answer was not in the expected format.';
   }catch(e){ui.cr.err=errText(e)+(e&&e.text?'':'');}
-  ui.cr.busy=false;save();render();
+  ui.cr.busy=false;
+  if(kind==='setup'&&!ui.cr.err){
+    var hs=hGet(),dd=ui.cr.data||{};
+    if(hs&&hs.so.pending.length){
+      if(hs.so.pending.indexOf(dd.keep_secret)<0)ui.cr.err='Claude did not choose one of its dealt secret objectives. Dismiss this and ask again.';
+      else applyCR();
+    }
+  }
+  save();render();
 }
 
 /* ---------- Claude tab ---------- */
@@ -1579,19 +1587,19 @@ function renderClaude(){
   if(!hh){
     h+='<p>Claude’s hidden cards are not set up yet. Nobody sees them. Do this once at the start of a game.</p><button class="btn pri" data-act="cDeal">Set up the card decks and deal secret objectives to everyone</button>';
   }else{
-    h+='<div class="stat-grid"><div class="st"><span class="stl">Action cards</span><b>'+hh.ac.hand.length+'</b></div><div class="st"><span class="stl">Secret objectives</span><b>'+(hh.so.hand.length+hh.so.pending.length)+'</b></div></div>'+
+    h+='<div class="stat-grid"><div class="st"><span class="stl">Action cards</span><b>'+hh.ac.hand.length+'</b></div><div class="st"><span class="stl">Secret objectives</span><b>'+hh.so.hand.length+(hh.so.pending.length?' <span class="mut small">(choosing 1 of '+hh.so.pending.length+')</span>':'')+'</b></div></div>'+
       '<div class="row"><button class="btn sm" data-act="cDraw" data-k="ac">Draw action card</button><button class="btn sm" data-act="cDraw" data-k="so">Draw secret objective</button></div>';
   }
   h+='</div>';
   if(!ui.sample)h+='<p class="note">'+(ui.sampleChecked?'Claude can be asked from inside the Claude app, or from here with your own API key (Setup, Ask Claude outside the Claude app).':'Checking whether Claude can be asked…')+'</p>';
   if(hh){
-    var ph=G.phase,opts=[];
+    var ph=G.phase,opts=[],waiting=!!(ui.cr&&ui.cr.data&&!ui.cr.err&&!ui.cr.applied);
     if(hh.so.pending.length)opts.push(['setup','Claude keeps one secret objective']);
     if(ph==='strategy')opts.push(['strategy','Claude picks a strategy card']);
     else if(ph==='action')opts.push(['turn',G.active===cp.id?'Take Claude’s turn':'Ask for Claude’s turn (not its turn yet)']);
     else if(ph==='status')opts.push(['status','Claude’s status phase']);
     else if(ph==='agenda')opts.push(['agenda','Claude votes on the agenda']);
-    h+='<div class="sec"><h2>Ask Claude</h2><div class="row">'+opts.map(function(o){return '<button class="btn pri" data-act="cAsk" data-k="'+o[0]+'"'+(busy||!ui.sample?' disabled':'')+'>'+o[1]+'</button>';}).join('')+'</div>'+
+    h+='<div class="sec"><h2>Ask Claude</h2>'+(waiting?'<p class="mut small" style="margin-top:0">Apply or dismiss the answer below first.</p>':'')+'<div class="row">'+opts.map(function(o){return '<button class="btn pri" data-act="cAsk" data-k="'+o[0]+'"'+(busy||waiting||!ui.sample?' disabled':'')+'>'+o[1]+'</button>';}).join('')+'</div>'+
       '<label class="fld" style="margin-top:10px"><span>Say something to Claude (a trade offer, a question, a threat)</span><input id="cl-msg" type="text" autocomplete="off"></label><button class="btn" style="margin-top:8px" data-act="cSend"'+(busy||!ui.sample?' disabled':'')+'>Send</button></div>'+renderCR();
   }else h+=renderCR();
   var pb=pbSlice();
