@@ -998,10 +998,12 @@ async function saAskClaude(){
   }catch(e){if(G.sa===S){S.busy=false;toast('AI could not decide. '+errText(e));}}
   save();render();
 }
-function saCardNum(cp,sa){
-  var nm=String((sa&&sa.card)||'').toLowerCase(),n=0;
+/* models often copy the whole list entry ("Trade (initiative 5)"), so drop any bracketed part and stray digits before matching the card name */
+function stratNum(x){
+  var nm=String(x||'').toLowerCase().replace(/\(.*?\)/g,'').replace(/[^a-z ]/g,'').replace(/\s+/g,' ').trim(),n=0;
   STRATD.forEach(function(s,ix){if(s[0].toLowerCase()===nm)n=ix+1;});return n;
 }
+function saCardNum(cp,sa){return stratNum(sa&&sa.card);}
 function saCheckClaude(cp,sa){
   var n=saCardNum(cp,sa);
   if(!n)return 'There is no strategy card called '+((sa&&sa.card)||'(none)')+'.';
@@ -1537,8 +1539,7 @@ function applyCR(){
     hh.so.hand.push(d.keep_secret);hh.so.deck=shuffle(hh.so.deck.concat(rest));hh.so.pending=[];log('AI chose its secret objective');
   }
   if(d.pick_strategy_card){
-    var nm=String(d.pick_strategy_card).toLowerCase(),n=0;
-    STRATD.forEach(function(s,ix){if(s[0].toLowerCase()===nm)n=ix+1;});
+    var n=stratNum(d.pick_strategy_card);
     if(n&&!G.strat[n].pid){G.strat[n]={pid:cp.id,ex:false};log(cp.name+' took '+STRATD[n-1][0]+' (initiative '+n+')');stratAdvance();}
   }
   if(d.tokens&&typeof d.tokens==='object'){['t','f','s'].forEach(function(k){if(typeof d.tokens[k]==='number'&&d.tokens[k]>=0)cp.cmd[k]=Math.floor(d.tokens[k]);});log('AI set its command tokens to '+cp.cmd.t+' tactic, '+cp.cmd.f+' fleet, '+cp.cmd.s+' strategy');}
